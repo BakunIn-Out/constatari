@@ -6,7 +6,7 @@
    Datele stau pe telefon (IndexedDB). Spre AI (doar când completează) pleacă textul + imaginile constatării
    și câteva rânduri-exemplu din backup-ul importat (ca să scrie în același stil). */
 
-const APP_VER = '0.4.3';
+const APP_VER = '0.5.0';
 // pagină veche (din cache) + cod nou -> nu pornesc pe jumătate: șterg memoria veche și redeschid curat
 if (document.documentElement.getAttribute('data-ver') !== APP_VER) {
   (window.reparaAplicatia || function () {
@@ -174,6 +174,7 @@ async function getDraft() {
 document.addEventListener('visibilitychange', () => {
   if (!document.hidden) return;
   if (micOn) stopMic(false);                       // camera / apel: nu las microfonul pornit în fundal
+  if (camStream) { inchideCamera(); if (edit) onFormChange(); }
   saveDraftNow();
 });
 
@@ -309,8 +310,11 @@ window.addEventListener('popstate', e => {
   const d = e.state && Number.isInteger(e.state.d) ? e.state.d : null;
   if (d !== null) { nav.pos = d; nav.stack[d] = v; }
   else { nav.pos++; nav.stack.length = nav.pos; nav.stack.push(v); history.replaceState({ v, d: nav.pos }, '', '#' + v); }
-  const deschisa = ['picker', 'sheet', 'shFisier'].find(id => !$(id).hidden);
-  if (deschisa && curView && v !== curView) { if (deschisa === 'shFisier') $('sfRenunta').click(); else $(deschisa).hidden = true; navPush(curView); return; }
+  const deschisa = ['cam', 'picker', 'sheet', 'shFisier'].find(id => !$(id).hidden);
+  if (deschisa && curView && v !== curView) {
+    if (deschisa === 'shFisier') $('sfRenunta').click(); else if (deschisa === 'cam') $('camGata').click(); else $(deschisa).hidden = true;
+    navPush(curView); return;
+  }
   if (saving && curView === 'obs' && v !== 'obs') { navPush('obs'); toast('Salvez…'); return; }
   if (curView === 'obs' && v !== 'obs') {
     if (obsNesalvata()) { navPush('obs'); intreabaIesire(() => history.back()); return; }
@@ -463,12 +467,40 @@ function renderApt() {
     const d = document.createElement('button'); d.type = 'button'; d.className = 'item'; d.innerHTML = itemHtml(r);
     d.onclick = () => openObs(r); box.appendChild(d);
   });
+  $('btnCopiazaTot').hidden = !list.length;
   const u = urmApt();
   $('btnAptUrm').hidden = !u;
   $('btnAptUrm').innerHTML = `<small>Următorul</small><b>${esc(u)} ›</b>`;
   $('btnAptUrm').setAttribute('aria-label', 'Apartamentul următor: ' + u);
 }
 $('btnNou').onclick = () => openObs(null);
+$('btnCopiazaTot').onclick = () => alegeApt({ locatie: ses.locatie, etaj: ses.etaj, apt: ses.apt }, async dest => {
+  const n = await copiazaIn(recsApt(), dest); toast(`Copiate ${n} în ${dest.apt}`);
+});
+
+/* ---------------- COPIERE în alt apartament (aceleași probleme; fără poze: pozele sunt din apartamentul vechi) ---------------- */
+function toateApt() {
+  const out = [];
+  Object.entries(cfg.apartamente || {}).forEach(([k, l]) => { const [loc, et] = k.split('|'); (l || []).forEach(a => out.push({ loc, et, apt: a, lbl: `${a} · ${loc} · ${et}` })); });
+  return out;
+}
+function alegeApt(din, cb) {
+  const l = toateApt().filter(x => !(x.loc === din.locatie && x.et === din.etaj && x.apt === din.apt));
+  const scor = x => (x.loc === din.locatie ? 2 : 0) + (x.et === din.etaj ? 1 : 0);
+  const ord = l.map((x, i) => [x, i]).sort((a, b) => scor(b[0]) - scor(a[0]) || a[1] - b[1]).map(([x]) => x);
+  alegeDinLista('Copiază în', ord.map(x => x.lbl), '', lbl => { const d = ord.find(x => x.lbl === lbl); if (d) cb(d); });
+}
+async function copiazaIn(recs, dest) {
+  let n = 0;
+  for (const r of recs) {
+    const now = new Date();
+    const c = JSON.parse(JSON.stringify(r)); delete c.poze; delete c.poza; delete c._farePoze;
+    Object.assign(c, { id: genId(), _ts: Date.now() + n, dataOra: roDateTime(now), dataObs: isoDate(now), locatie: dest.loc, etaj: dest.et, apt: dest.apt, nPoze: 0,
+      _meta: { ...(r._meta || {}), exportat: null, thumb: '', gif: false, copiatDin: r.id } });
+    try { await dbSalveaza(c, []); inLista(usoara({ ...c, poze: [] })); n++; } catch (e) { toast('Nu am putut copia: ' + e.message, 5000); break; }
+  }
+  return n;
+}
 $('btnAptUrm').onclick = () => {
   const u = urmApt(); if (!u) return;
   ses.apt = u; saveSes(); renderApt(); window.scrollTo(0, 0); toast('Acum: ' + u);
@@ -522,7 +554,8 @@ async function openObs(rec) {
 function renderObs() {
   head(edit.id ? 'Editare constatare' : 'Constatare nouă', `${edit.apt} · ${edit.locatie} · ${edit.etaj}`);
   drawThumbs();
-  const cam = camerePt(edit.locatie, edit.etaj, edit.apt);
+  let cam = camerePt(edit.locatie, edit.etaj, edit.apt);
+  if (eLocuinte(edit.locatie) && !cam.includes('Tot apartamentul')) cam = ['Tot apartamentul', ...cam];
   const sel = edit.inc ? edit.inc.split(',').map(s => s.trim()).filter(Boolean) : [];
   incChips = makeChips('incChips', cam, sel, false, () => { atins.inc = true; onFormChange(); });   // o singură încăpere, ca în aplicația de verificări
   const alte = (cfg.camere || []).filter(c => !cam.includes(c) && !combinata(c));
@@ -531,6 +564,7 @@ function renderObs() {
   $('txtObs').value = edit.obs || ''; creste();
   drawDetalii();
   $('btnSterge').hidden = !edit.id;
+  $('btnCopiaza').hidden = !edit.id;
   $('obsExportat').hidden = !(edit._meta && edit._meta.exportat);
   updFotoBusy();
   renderMicInfo();
@@ -784,6 +818,46 @@ async function saveForm() {
 const vineDinLista = () => prevView() === 'apt' || prevView() === 'mele';
 function inapoiLaApt() { if (vineDinLista()) history.back(); else go('apt', true); }
 $('btnSalv').onclick = saveForm;
+$('btnCopiaza').onclick = () => {
+  if (!edit) return;
+  readForm();
+  const src = { ...edit };
+  alegeApt(src, async dest => { const n = await copiazaIn([src], dest); if (n) toast(`Copiată în ${dest.apt}`); });
+};
+
+/* ---------------- CAMERA din aplicație: poze una după alta, fără să ieși; fiecare intră imediat în constatare ---------------- */
+let camStream = null, camNr = 0;
+$('btnCam').onclick = () => {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { $('inCam').click(); return; }   // telefon vechi: camera telefonului
+  deschideCamera();
+};
+async function deschideCamera() {
+  try {
+    camStream = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1440 } } });
+  } catch (e) { toast(e.name === 'NotAllowedError' ? 'Camera e blocată (setările telefonului)' : 'Camera nu pornește', 4000); return; }
+  if (!edit) { inchideCamera(); return; }
+  const v = $('camVideo'); v.srcObject = camStream; camNr = 0; updCam(); $('camUlt').style.backgroundImage = '';
+  $('cam').hidden = false;
+  try { await v.play(); } catch (e) { }
+}
+function inchideCamera() {
+  if (camStream) camStream.getTracks().forEach(t => { try { t.stop(); } catch (e) { } });
+  camStream = null; $('camVideo').srcObject = null; $('cam').hidden = true;
+}
+function updCam() { $('camGata').textContent = camNr ? `Gata (${camNr})` : 'Închide'; }
+$('camShot').onclick = () => {
+  const v = $('camVideo'); if (!edit) return;
+  if (v.videoWidth < 200 || v.readyState < 2) { toast('Camera pornește…', 1200); return; }   // fără poze goale cât nu e gata imaginea
+  const s = Math.min(1, 1600 / Math.max(v.videoWidth, v.videoHeight));
+  const c = document.createElement('canvas'); c.width = Math.round(v.videoWidth * s); c.height = Math.round(v.videoHeight * s);
+  c.getContext('2d').drawImage(v, 0, 0, c.width, c.height);
+  const url = c.toDataURL('image/jpeg', 0.8); c.width = c.height = 0;
+  edit.poze.push(url); pozeVer++; formDirty = true; camNr++;
+  $('camUlt').style.backgroundImage = `url("${url}")`;
+  const f = $('camFlash'); f.classList.remove('on'); void f.offsetWidth; f.classList.add('on');
+  updCam(); drawThumbs(); saveDraftSoon();
+};
+$('camGata').onclick = () => { inchideCamera(); if (edit) onFormChange(); };
 $('btnSterge').onclick = async () => {
   if (!edit || !edit.id || !confirm('Ștergi constatarea?')) return;
   const id = edit.id; await dbDel(id); dinLista(id); formDirty = false; edit = null; await dropDraft(); toast('Șters'); inapoiLaApt();
@@ -802,6 +876,12 @@ function renderMicInfo() {
   $('micInfo').textContent = (!SR || srOprit) ? ''
     : '';
 }
+// recunoașterea vocală aude greșit câțiva termeni de șantier (utilizatorul, 24.11): „înfoliat” -> „înfuriat”, „de reglat” -> „dereglat”
+const CORECTURI_DICTARE = [
+  [/(^|[^\p{L}])([îÎiI])nfuria(t|tă|ta|te|ți|ti)(?![\p{L}])/gu, (m, p, a, t) => p + (a === 'Î' || a === 'I' ? 'Î' : 'î') + 'nfolia' + t],
+  [/(^|[^\p{L}])([dD])eregla(t|tă|ta|te|ți|ti)(?![\p{L}])/gu, (m, p, d) => p + d + 'e reglat'],
+];
+const corecteazaDictare = x => CORECTURI_DICTARE.reduce((s, [rx, fn]) => s.replace(rx, fn), x);
 const asteptMic = () => rec ? Promise.race([rec.sfarsit, pauza(1500)]) : Promise.resolve();
 async function startMic() {
   if (!SR || srOprit) { toast('Folosește microfonul tastaturii', 3000); $('txtObs').focus(); return; }
@@ -827,7 +907,7 @@ async function startMic() {
       const x = e.results[i];
       if (x.isFinal) fin += x[0].transcript.trim() + ' '; else interim += x[0].transcript;
     }
-    ta.value = (micBase + fin + interim).replace(/\s+/g, ' ').trimStart(); creste(); micActiv();
+    ta.value = corecteazaDictare((micBase + fin + interim).replace(/\s+/g, ' ').trimStart()); creste(); micActiv();
     formDirty = true;
   };
   r.onerror = e => {
@@ -876,7 +956,7 @@ Il rescrii ca UN rand scurt pentru aplicatia de verificari ("obs"): de regula su
 - Mai multe probleme la acelasi element: in acelasi rand, separate prin "; ".
 - Corectezi cuvintele recunoscute gresit dupa glosar (ex. "spalier" -> "spalet", "ce te" -> "CT").
 Exemple de stil: "Toc usa baie zgariat (partea superioara)" · "Usa dormitor nu se inchide" · "Usa acces zgariata" · "Usa baie cu dus atinge tocul la inchidere" · "Usa baie dus nu este in boloboc" · "Coltar grinda living nu este drept" · "Urme de slefuit pe intrados" · "Spalet fereastra nefinisat in partea de jos" · "Lavabil scurs sub priza" · "Masca cada nu este in linie cu cada" · "Rampa CT murdara de vopsea" · "Folie lichida neindepartata de pe tamplarie".
-Glosar: spalet = latura golului de usa/fereastra · intrados = fata de dedesubt a grinzii · coltar = profilul de pe muchie · olnita = racordul/muchia dintre doua suprafete · aparataj = prize, intrerupatoare · CT = centrala termica · rampa CT = tevile de sub centrala · masca cada = panoul care inchide cada · distantiere = crucitele dintre placi · defoliat = scoasa folia de protectie · folie lichida · beton contact · reparatii perimetrale = retusurile din jurul ramei/tocului · toc · foaie usa · pervaz · glaf · plinta · balamale · broasca · yala · maner · garnitura · prag · glet · lavabil · chit · boloboc (nu e in boloboc = nu e drept/la nivel) · are joc = se misca, nu sta fix.
+Glosar: infoliat = acoperit cu folie de protectie · de reglat = trebuie reglat (ex. tamplarie de reglat) · spalet = latura golului de usa/fereastra · intrados = fata de dedesubt a grinzii · coltar = profilul de pe muchie · olnita = racordul/muchia dintre doua suprafete · aparataj = prize, intrerupatoare · CT = centrala termica · rampa CT = tevile de sub centrala · masca cada = panoul care inchide cada · distantiere = crucitele dintre placi · defoliat = scoasa folia de protectie · folie lichida · beton contact · reparatii perimetrale = retusurile din jurul ramei/tocului · toc · foaie usa · pervaz · glaf · plinta · balamale · broasca · yala · maner · garnitura · prag · glet · lavabil · chit · boloboc (nu e in boloboc = nu e drept/la nivel) · are joc = se misca, nu sta fix.
 Raspunzi DOAR cu JSON: {"obs":""}`;
 
 let ai = { seq: 0, busy: false, undo: null, sig: '', stare: null, info: null, descriere: '' };
