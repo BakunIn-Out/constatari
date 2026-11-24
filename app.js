@@ -6,10 +6,11 @@
    Datele stau pe telefon (IndexedDB). Spre AI (doar când completează) pleacă textul + imaginile constatării
    și câteva rânduri-exemplu din backup-ul importat (ca să scrie în același stil). */
 
-const APP_VER = '0.4.0';
+const APP_VER = '0.4.1';
 // pagină veche (din cache) + cod nou -> nu pornesc pe jumătate: șterg memoria veche și redeschid curat
 if (document.documentElement.getAttribute('data-ver') !== APP_VER) {
   (window.reparaAplicatia || function () {
+    if (navigator.onLine === false) return;
     try { if (Date.now() - Number(sessionStorage.getItem('constatari_repar') || 0) < 60000) return; sessionStorage.setItem('constatari_repar', String(Date.now())); } catch (e) { }
     const gata = () => { const u = new URL(location.href); u.searchParams.set('r', Date.now()); u.hash = ''; location.replace(u.toString()); };
     Promise.all([
@@ -68,12 +69,14 @@ async function incarcaDate(cod, fortat) {
   const sem = bin.ct.slice(0, 64);
   if (!fortat && PACHET && localStorage.getItem(LS.pachetCt) === sem) return false;
   const pk = await decripteaza(cod, bin);
-  localStorage.setItem(LS.cod, cod); localStorage.setItem(LS.pachet, JSON.stringify(pk)); localStorage.setItem(LS.pachetCt, sem);
   aplicaPachet(pk);
+  try { localStorage.setItem(LS.cod, cod); localStorage.setItem(LS.pachet, JSON.stringify(pk)); localStorage.setItem(LS.pachetCt, sem); }
+  catch (e) { toast('Telefonul nu mai are loc pentru datele echipei.', 6000); }
   return true;
 }
 let ses = { locatie: '', etaj: '', apt: '', spec: '', tip: 'Neconformitate', prioritate: 'Normal', resp: [], termenZile: 3 };
 try { Object.assign(ses, JSON.parse(localStorage.getItem(LS.ses) || '{}')); } catch (e) { }
+Object.assign(ses, { spec: '', tip: 'Neconformitate', prioritate: 'Normal', resp: [], termenZile: 3 }); delete ses.specAles; delete ses.tipAles;
 const saveSes = () => localStorage.setItem(LS.ses, JSON.stringify(ses));
 const getUser = () => (localStorage.getItem(LS.user) || '').trim();
 function stil() { return (PACHET && PACHET.stil) || { exemple: [], respPeSpec: {} }; }
@@ -88,14 +91,7 @@ function db() {
       if (!d.objectStoreNames.contains('obs')) d.createObjectStore('obs', { keyPath: 'id' });
       if (!d.objectStoreNames.contains('draft')) d.createObjectStore('draft', { keyPath: 'k' });
       if (!d.objectStoreNames.contains('poze')) d.createObjectStore('poze', { keyPath: 'id' });
-      if (e.oldVersion > 0 && e.oldVersion < 3) {        // constatările vechi: pozele se mută în depozitul lor
-        const so = t.objectStore('obs'), sp = t.objectStore('poze');
-        so.openCursor().onsuccess = ev => {
-          const c = ev.target.result; if (!c) return;
-          if (Array.isArray(c.value.poze)) { sp.put({ id: c.value.id, poze: c.value.poze }); c.update(usoara(c.value)); }
-          c.continue();
-        };
-      }
+      // constatările vechi (pozele în aceeași înregistrare) se mută la pornire, câte una: vezi reload()
     };
     r.onsuccess = () => {
       const d = r.result; _db = d;
@@ -134,6 +130,8 @@ const dbAll = () => tx('obs', 'readonly', st => st.getAll());
 const dbPut = rec => tx('obs', 'readwrite', st => st.put(usoara(rec)));               // doar datele, pozele rămân neatinse
 const dbSalveaza = (rec, poze) => tx(['obs', 'poze'], 'readwrite', t => { t.objectStore('obs').put(usoara({ ...rec, poze })); t.objectStore('poze').put({ id: rec.id, poze }); });
 const dbPoze = id => tx('poze', 'readonly', st => st.get(id)).then(x => (x && x.poze) || []);
+const dbPatch = (id, fn) => tx('obs', 'readwrite', st => { const g = st.get(id); g.onsuccess = () => { if (g.result) st.put(fn(g.result)); }; });
+const patchMeta = async (id, m) => { await dbPatch(id, x => ({ ...x, _meta: { ...(x._meta || {}), ...m } })); const c = all.find(x => x.id === id); if (c) c._meta = { ...(c._meta || {}), ...m }; };
 const dbDel = id => tx(['obs', 'poze'], 'readwrite', t => { t.objectStore('obs').delete(id); t.objectStore('poze').delete(id); });
 
 let all = [];
@@ -145,7 +143,7 @@ async function reload() {
 // miniaturi pentru constatările vechi care nu au (una câte una, în fundal)
 async function completeazaMiniaturi() {
   for (const r of all.filter(x => x.nPoze && !(x._meta && x._meta.thumb))) {
-    try { const pz = await dbPoze(r.id); if (!pz[0]) continue; r._meta = { ...(r._meta || {}), thumb: await imgToJpeg(pz[0], 200, 0.7) }; await dbPut(r); } catch (e) { }
+    try { const pz = await dbPoze(r.id); if (!pz[0]) continue; await patchMeta(r.id, { thumb: await imgToJpeg(pz[0], 200, 0.7) }); } catch (e) { }
   }
 }
 function inLista(rec) { all = all.filter(r => r.id !== rec.id); all.push(rec); }
@@ -180,8 +178,9 @@ document.addEventListener('visibilitychange', () => {
 });
 
 /* ---------------- UI mărunt ---------------- */
-let toastT;
+let toastT, toastAt = 0;
 function toast(msg, ms = 2200) {
+  toastAt = Date.now();
   if (!$('sheet').hidden) return;                   // nu acopăr butoanele ferestrei Salvează / Nu salva
   const t = $('toast'); t.textContent = msg; t.hidden = false;
   clearTimeout(toastT); toastT = setTimeout(() => { t.hidden = true; }, ms);
@@ -300,6 +299,7 @@ const prevView = () => nav.pos > 0 ? nav.stack[nav.pos - 1] : null;
 const hashView = () => { const v = (location.hash || '').slice(1); return VIEWS[v] ? v : 'start'; };
 const parinte = v => ({ obs: 'apt', apt: 'start', gata: ses.apt ? 'apt' : 'start' }[v] || 'start');
 function go(v, replace) {
+  if (saving && curView === 'obs' && v !== 'obs') return;
   if (curView === 'obs' && v !== 'obs') { if (obsNesalvata()) { intreabaIesire(() => go(v, replace)); return; } aruncObs(); }
   if (replace || nav.pos < 0) navReplace(v); else navPush(v);
   show(v);
@@ -309,8 +309,9 @@ window.addEventListener('popstate', e => {
   const d = e.state && Number.isInteger(e.state.d) ? e.state.d : null;
   if (d !== null) { nav.pos = d; nav.stack[d] = v; }
   else { nav.pos++; nav.stack.length = nav.pos; nav.stack.push(v); history.replaceState({ v, d: nav.pos }, '', '#' + v); }
-  const deschisa = ['picker', 'sheet'].find(id => !$(id).hidden);
-  if (deschisa && curView && v !== curView) { $(deschisa).hidden = true; navPush(curView); return; }
+  const deschisa = ['picker', 'sheet', 'shFisier'].find(id => !$(id).hidden);
+  if (deschisa && curView && v !== curView) { if (deschisa === 'shFisier') $('sfRenunta').click(); else $(deschisa).hidden = true; navPush(curView); return; }
+  if (saving && curView === 'obs' && v !== 'obs') { navPush('obs'); toast('O secundă, salvez…'); return; }
   if (curView === 'obs' && v !== 'obs') {
     if (obsNesalvata()) { navPush('obs'); intreabaIesire(() => history.back()); return; }
     aruncObs();
@@ -319,7 +320,10 @@ window.addEventListener('popstate', e => {
   show(v);
 });
 const obsNesalvata = () => !!edit && formDirty && !saving;
-function aruncObs() { if (!edit) return; formDirty = false; stopMic(true); ai.seq++; dropDraft(); edit = null; }
+function aruncObs() {
+  if (!edit || saving) return;
+  formDirty = false; opresteMic(); ai.seq++; dropDraft(); uitaCadre(edit); edit = null;
+}
 // în loc de confirm() (unde „OK” = aruncă, apăsat din reflex): trei butoane clare
 function intreabaIesire(dupaAruncare) {
   const sh = $('sheet'); sh.hidden = false; clearTimeout(toastT); $('toast').hidden = true;
@@ -336,7 +340,7 @@ function show(v) {
   if (location.hash !== '#' + v || !history.state || history.state.d !== nav.pos) navReplace(v);
   const vechi = curView; curView = v;
   window.__aplicatiaPornita = true; $('incarc').hidden = true;
-  if (vechi !== v) { clearTimeout(toastT); $('toast').hidden = true; }
+  if (vechi !== v && Date.now() - toastAt > 700) { clearTimeout(toastT); $('toast').hidden = true; }
   Object.entries(VIEWS).forEach(([k, id]) => { $(id).hidden = k !== v; });
   $('btnBack').hidden = v === 'start' || v === 'lock';
   $('btnSetari').hidden = v !== 'start';
@@ -473,7 +477,9 @@ $('btnAptUrm').onclick = () => {
 /* ---------------- FORMULAR ---------------- */
 let edit = null, incChips, respObs;
 let atins = { inc: false, spec: false, tip: false };       // ce a ales omul de mână (AI-ul nu le mai schimbă)
-const cadreGif = new Map();                                  // GIF -> 3 cadre JPEG pentru AI
+const cadreGif = new Map();                                  // GIF (după amprentă scurtă) -> 3 cadre JPEG pentru AI
+const fp = u => String(u).length + ':' + String(u).slice(-64);
+const uitaCadre = e => (e && e.poze || []).forEach(x => cadreGif.delete(fp(x)));
 const inLucru = [];                                          // poze care se micșorează / video-uri care devin GIF, acum
 let saving = false, editOrig = null, coadaVideo = Promise.resolve();
 const amprenta = r => JSON.stringify([r.inc, r.obs, r.spec, r.tip, r.prioritate, r.termen, r.resp, (r.poze || []).map(p => p.length + p.slice(-48))]);
@@ -495,10 +501,17 @@ function newRec() {
     _meta: { creat: now.toISOString(), exportat: null }
   };
 }
+let openSeq = 0;
 async function openObs(rec) {
-  let poze = [];
-  if (rec) { try { poze = await dbPoze(rec.id); } catch (e) { toast('Nu pot citi pozele: ' + e.message, 5000); } }
+  const tok = ++openSeq;
+  let poze = [], farePoze = false;
+  if (rec) {
+    try { poze = await dbPoze(rec.id); } catch (e) { toast('Nu pot citi pozele acum: ' + e.message, 5000); return; }
+    if (rec.nPoze && !poze.length) { farePoze = true; toast('Pozele acestei constatări nu se găsesc; textul îl poți schimba.', 5000); }
+  }
+  if (tok !== openSeq) return;
   edit = rec ? { ...JSON.parse(JSON.stringify(rec)), poze } : newRec();
+  if (farePoze) edit._farePoze = true;
   edit.poze = edit.poze || []; edit.resp = edit.resp || [];
   // ce s-a ales la Start pentru toată verificarea contează ca ales de om: AI-ul nu-l schimbă
   atins = rec ? { inc: !!rec.inc, spec: true, tip: true } : { inc: false, spec: !!(ses.specAles && ses.spec), tip: !!(ses.tipAles && ses.tip) };
@@ -543,7 +556,11 @@ function updSalv() {
 }
 let incAlte = [];
 $('incAlta').onclick = () => alegeDinLista('Altă încăpere', incAlte, '', v => { incChips.add(v); atins.inc = true; onFormChange(); });
-$('txtObs').addEventListener('input', () => { creste(); onFormChange(); });
+$('txtObs').addEventListener('input', () => {
+  if (micOn) stopMic(true);                          // scrii de mână -> dictarea nu-ți mai suprascrie textul
+  if (ai.undo) { ai.undo = null; aiStare(null); }    // după ce schimbi textul, „Anulează” AI nu mai are sens
+  creste(); onFormChange();
+});
 function creste() { const t = $('txtObs'); t.style.height = 'auto'; t.style.height = Math.min(t.scrollHeight + 2, 280) + 'px'; }
 $('oTermen').addEventListener('change', onFormChange);
 
@@ -583,7 +600,7 @@ function jobNou(ed, tip) {
 }
 function updFotoBusy() {
   const v = !!edit && inLucru.some(j => j.ed === edit && j.tip === 'video');
-  $('photos').classList.toggle('busy', v);
+  $('photos').classList.toggle('busy', v); $('vObs').classList.toggle('mediabusy', v);
 }
 async function onFiles(e) {
   const files = [...(e.target.files || [])]; e.target.value = '';
@@ -605,10 +622,11 @@ function addVideo(f, ed) {
   const job = jobNou(ed, 'video');
   if (edit === ed) { drawThumbs(); updFotoBusy(); }
   coadaVideo = coadaVideo.then(async () => {      // unul câte unul: telefonul nu decodează bine mai multe video deodată
+    if (edit !== ed) { job.termina(); return; }     // constatarea a fost aruncată între timp
     try {
       const r = await videoToGif(f, p => { job.pct = p; const b = job.el && job.el.querySelector('b'); if (b) b.textContent = p + '%'; });
       if (r.taiat) toast(`Video lung: am păstrat primele ${r.sec} secunde.`, 4500);
-      ed.poze.push(r.url); cadreGif.set(r.url, r.cadre); pozeVer++;
+      ed.poze.push(r.url); cadreGif.set(fp(r.url), r.cadre); pozeVer++;
       if (edit === ed) onFormChange();
     } catch (err) { toast('Nu am putut pregăti video-ul: ' + err.message, 5000); }
     finally { job.termina(); }
@@ -709,31 +727,37 @@ async function saveForm() {
   const ed = edit;
   saving = true; $('btnSalv').disabled = true;
   try {
-    const pend = inLucru.filter(j => j.ed === ed);
-    if (pend.length) {
+    $('vObs').classList.add('salvez');
+    while (inLucru.some(j => j.ed === ed)) {
+      const pend = inLucru.filter(j => j.ed === ed);
       toast(pend.some(j => j.tip === 'video') ? 'Termin video-ul, apoi salvez…' : 'Termin poza, apoi salvez…', 4000);
       await Promise.all(pend.map(j => j.gata));
     }
-    if (micOn || rec) { stopMic(true); await asteptMic(); }
-    if (edit !== ed) return;
+    if (micOn || rec) { stopMic(true); await asteptMic(); opresteMic(); }
     readForm();
     if (!ed.obs && !ed.poze.length) { toast('Pune măcar o poză sau o descriere.'); return; }
     if (!ed.inc) { toast('Alege încăperea.'); $('incChips').scrollIntoView({ block: 'center', behavior: 'smooth' }); return; }
     ai.seq++;                                          // un răspuns AI întârziat nu mai schimbă nimic
     if (ed.id && editOrig && editOrig === amprenta(ed)) {   // n-ai schimbat nimic: nu o marchez ca nouă (nu se reexportă)
-      edit = null; formDirty = false; await dropDraft(); inapoiLaApt(); return;
+      uitaCadre(ed); edit = null; formDirty = false; await dropDraft(); saving = false; inapoiLaApt(); return;
     }
     if (!ed.id) ed.id = genId();
     ed._ts = Date.now();
     ed._meta = { ...(ed._meta || {}), exportat: null };   // modificată după export -> se exportă din nou
-    try { ed._meta.thumb = ed.poze[0] ? await imgToJpeg(ed.poze[0], 200, 0.7) : ''; } catch (e) { ed._meta.thumb = ''; }
-    try { await dbSalveaza(ed, ed.poze); } catch (err) { toast('Nu am putut salva: ' + err.message, 7000); return; }
-    edit = null; formDirty = false;
-    inLista(usoara(ed));
+    const doarText = ed._farePoze && !ed.poze.length;           // pozele nu s-au putut citi: NU le suprascriu cu „nimic”
+    delete ed._farePoze;
+    if (!doarText) { try { ed._meta.thumb = ed.poze[0] ? await imgToJpeg(ed.poze[0], 200, 0.7) : ''; } catch (e) { ed._meta.thumb = ''; } }
+    try {
+      if (doarText) { const { poze, ...fara } = ed; await dbPut(fara); } else await dbSalveaza(ed, ed.poze);
+    } catch (err) { toast('Nu am putut salva: ' + err.message, 7000); return; }
+    if (edit === ed) edit = null;
+    formDirty = false; uitaCadre(ed);
+    inLista(usoara(doarText ? (({ poze, ...x }) => x)(ed) : ed));
     await dropDraft();
+    saving = false; $('btnSalv').disabled = false; $('vObs').classList.remove('salvez');
     toast('Salvat');
     inapoiLaApt();
-  } finally { saving = false; $('btnSalv').disabled = false; }
+  } finally { saving = false; $('btnSalv').disabled = false; $('vObs').classList.remove('salvez'); }
 }
 const vineDinLista = () => prevView() === 'apt' || prevView() === 'mele';
 function inapoiLaApt() { if (vineDinLista()) history.back(); else go('apt', true); }
@@ -769,12 +793,13 @@ async function startMic() {
   if (ai.descriere && ta.value.trim() === ai.descriere) { ta.value = ''; creste(); }   // descrierea propusă din imagine o înlocuiește ce spui
   aiStare(null);
   const r = new SR(); rec = r;
+  const ed0 = edit, textStart = ta.value;
   r.lang = 'ro-RO'; r.interimResults = true;
   r.continuous = !ANDROID;                           // pe Android „continuous” dublează cuvintele -> repornesc eu
   let gata; r.sfarsit = new Promise(res => { gata = res; });
   micBase = ta.value.trim() ? ta.value.trim() + ' ' : '';
   r.onresult = e => {
-    if (rec !== r) return;
+    if (rec !== r || edit !== ed0) return;
     let fin = '', interim = '';
     for (let i = 0; i < e.results.length; i++) {
       const x = e.results[i];
@@ -796,8 +821,8 @@ async function startMic() {
     if (rec !== r) { gata(); return; }
     if (micOn && !document.hidden) { micBase = ta.value.trim() ? ta.value.trim() + ' ' : ''; try { r.start(); return; } catch (err) { } }
     micOn = false; rec = null; micUi(); gata();
-    if (!edit) return;
-    onFormChange();
+    if (!edit || edit !== ed0) return;
+    if (ta.value !== textStart) onFormChange(); else aiUi();
   };
   try { r.start(); micOn = true; aiDupaMic = false; micUi(); aiUi(); micActiv(); }
   catch (err) { rec = null; gata(); toast('Nu am putut porni dictarea.'); }
@@ -807,6 +832,11 @@ function stopMic(faraAi) {
   if (rec && micOn) { micOn = false; aiDupaMic = !faraAi; try { rec.stop(); } catch (e) { } }
   else if (faraAi) aiDupaMic = false;
   if ($('btnMic')) micUi();
+}
+function opresteMic() {                             // oprire definitivă: fără rezultate întârziate
+  stopMic(true);
+  if (rec) { const v = rec; rec = null; try { v.abort(); } catch (e) { } }
+  micOn = false; if ($('btnMic')) micUi();
 }
 $('btnMic').onclick = () => micOn ? stopMic(false) : startMic();
 
@@ -870,7 +900,7 @@ async function aiRun() {
 async function imaginiPentruAi(ed) {
   const out = [];
   for (const p of ed.poze.slice(0, 4)) {
-    if (isGif(p) && cadreGif.has(p)) out.push(...cadreGif.get(p));
+    if (isGif(p) && cadreGif.has(fp(p))) out.push(...cadreGif.get(fp(p)));
     else { try { out.push(await imgToJpeg(p, 1024, 0.7)); } catch (e) { } }
     if (out.length >= 4) break;
   }
@@ -959,19 +989,32 @@ const pentruApp = r => { const o = { ...r }; delete o._meta; delete o.nPoze; ret
 
 // iPhone: meniul de partajare („Salvează în Fișiere”, WhatsApp, mail). Android / laptop: descărcare directă în Downloads
 // (meniul de partajare de pe Android de obicei nu are „salvează pe telefon”).
+function cereTrimitere(file) {
+  return new Promise(res => {
+    const sh = $('shFisier'); sh.hidden = false; clearTimeout(toastT); $('toast').hidden = true;
+    $('sfTrimite').onclick = async () => {
+      sh.hidden = true;
+      try { await navigator.share({ files: [file], title: file.name }); res(true); }
+      catch (e) { if (e.name !== 'AbortError') toast('Nu am putut trimite: ' + e.message, 5000); res(false); }
+    };
+    $('sfRenunta').onclick = () => { sh.hidden = true; res(false); };
+  });
+}
 async function shareOrDownload(blob, name) {
-  const ios = /iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
   const file = new File([blob], name, { type: blob.type });
-  if (ios && navigator.canShare && navigator.canShare({ files: [file] })) {
-    try { await navigator.share({ files: [file], title: name }); return true; }
-    catch (e) { if (e.name === 'AbortError') return false; }
-  }
+  if (IOS && navigator.canShare && navigator.canShare({ files: [file] })) return cereTrimitere(file);
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name;
   document.body.appendChild(a); a.click();
   setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 30000);
   return true;
 }
-$('btnExpApp').onclick = async () => {
+let exportInLucru = false;
+const unaCateUna = fn => async () => {               // (18) dublu-tap pe export = un singur fișier
+  if (exportInLucru) return; exportInLucru = true;
+  ['btnExpApp', 'btnExpCsv', 'btnExpPdf'].forEach(id => { $(id).disabled = true; });
+  try { await fn(); } finally { exportInLucru = false; ['btnExpApp', 'btnExpCsv', 'btnExpPdf'].forEach(id => { $(id).disabled = false; }); }
+};
+$('btnExpApp').onclick = unaCateUna(async () => {
   const recs = recsExport();
   if (!recs.length) { toast('Nimic de exportat.'); return; }
   toast('Pregătesc fișierul…', 2000);
@@ -985,11 +1028,11 @@ $('btnExpApp').onclick = async () => {
   const ok = await shareOrDownload(blob, `constatari_${stamp()}_${recs.length}obs.json`);
   if (!ok) return;
   const t = new Date().toISOString();
-  for (const r of recs) { r._meta = { ...(r._meta || {}), exportat: t }; await dbPut(r); }
+  for (const r of recs) await patchMeta(r.id, { exportat: t });
   renderGata();
-  toast(`Exportat: ${recs.length}. Acum în aplicația de verificări → „Combina backup-uri”.`, 5000);
-};
-$('btnExpCsv').onclick = async () => {
+  toast(`Trimise: ${recs.length}. În aplicația de verificări: meniu → „Combina backup-uri”.`, 5000);
+});
+$('btnExpCsv').onclick = unaCateUna(async () => {
   const recs = recsExport();
   if (!recs.length) { toast('Nimic de exportat.'); return; }
   const cols = ['Locatie', 'Etaj', 'Apartament', 'Incapere', 'Observatie', 'Specialitate', 'Tip', 'Prioritate', 'Responsabil', 'Data', 'Termen', 'Nr imagini', 'Text dictat', 'Id'];
@@ -997,8 +1040,8 @@ $('btnExpCsv').onclick = async () => {
   const rows = recs.map(r => [r.locatie, r.etaj, r.apt, r.inc, r.obs, r.spec, r.tip, r.prioritate, (r.resp || []).join(' / '), r.dataObs, r.termen, r.nPoze || 0, r._meta?.dictat || '', r.id].map(q).join(';'));
   const blob = new Blob(['\ufeff' + [cols.join(';')].concat(rows).join('\r\n')], { type: 'text/csv' });
   await shareOrDownload(blob, `constatari_${stamp()}.csv`);
-};
-$('btnExpPdf').onclick = async () => {
+});
+$('btnExpPdf').onclick = unaCateUna(async () => {
   const recs = recsExport();
   if (!recs.length) { toast('Nimic de exportat.'); return; }
   toast('Pregătesc raportul…', 2000);
@@ -1011,15 +1054,16 @@ $('btnExpPdf').onclick = async () => {
       h += `<h3>${esc(inc)}:</h3>`;
       for (const r of rs) {
         const pz = r.nPoze ? await dbPoze(r.id).catch(() => []) : [];
-        h += `<div class="o"><div>- ${esc(r.obs || '')}</div><div class="m">${esc([r.tip, r.spec, (r.resp || []).join(' / '), r.termen ? 'termen ' + r.termen : ''].filter(Boolean).join(' · '))}</div>`
-          + pz.map(x => `<figure><img src="${x}" alt="">${isGif(x) ? '<figcaption>cadru din video</figcaption>' : ''}</figure>`).join('') + '</div>';
+        let fig = '';
+        for (const x of pz) { let m = ''; try { m = await imgToJpeg(x, 800, 0.7); } catch (e) { continue; } fig += `<figure><img src="${m}" alt="">${isGif(x) ? '<figcaption>cadru din video</figcaption>' : ''}</figure>`; }
+        h += `<div class="o"><div>- ${esc(r.obs || '')}</div><div class="m">${esc([r.tip, r.spec, (r.resp || []).join(' / '), r.termen ? 'termen ' + r.termen : ''].filter(Boolean).join(' · '))}</div>` + fig + '</div>';
       }
     }
   }
   $('print').innerHTML = h;
-  await Promise.all([...$('print').querySelectorAll('img')].map(i => (i.decode ? i.decode() : Promise.resolve()).catch(() => { })));
+  for (const i of $('print').querySelectorAll('img')) { try { if (i.decode) await i.decode(); } catch (e) { } }
   window.print();
-};
+});
 window.addEventListener('afterprint', () => { $('print').innerHTML = ''; });
 $('btnStergeExp').onclick = async () => {
   const exp = all.filter(r => r._meta?.exportat);
@@ -1040,6 +1084,7 @@ async function renderSetari() {
   try { const e = await navigator.storage.estimate(); spatiu = ` · ~${Math.round(e.usage / 1048576)} MB folosiți`; } catch (e) { }
   $('infoApp').textContent = `${all.length} constatări pe acest telefon · versiunea ${APP_VER}`;
 }
+$('inUser').addEventListener('input', () => { localStorage.setItem(LS.user, $('inUser').value.trim().toUpperCase().replace(/[^A-Z0-9_]/g, '').slice(0, 20)); });
 $('inUser').onchange = () => {
   const u = $('inUser').value.trim().toUpperCase().replace(/[^A-Z0-9_]/g, '').slice(0, 20);
   localStorage.setItem(LS.user, u); $('inUser').value = u; toast(u ? 'Nume salvat: ' + u : 'Nume șters');
@@ -1064,11 +1109,17 @@ async function verificaAi() {
   try { await reload(); } catch (e) { toast('Nu pot citi memoria telefonului: ' + e.message, 6000); }
   // codul echipei: din link (?k=…) sau de pe telefon. Datele decriptate se țin pe telefon; se reîmprospătează când se schimbă.
   const codUrl = normCod(new URLSearchParams(location.search).get('k'));
-  const cod = codUrl || localStorage.getItem(LS.cod) || '';
-  try { const pk = JSON.parse(localStorage.getItem(LS.pachet) || 'null'); if (pk && pk.cfg && (!codUrl || codUrl === localStorage.getItem(LS.cod))) aplicaPachet(pk); } catch (e) { }
-  if (cod) {
-    if (PACHET) incarcaDate(cod).then(nou => { if (nou && curView === 'start') renderStart(); }).catch(() => { });
-    else { try { await incarcaDate(cod, true); } catch (e) { $('lockErr').textContent = e.name === 'OperationError' ? 'Codul din link nu e bun.' : 'Prima dată ai nevoie de internet.'; $('lockErr').hidden = false; } }
+  const codSalvat = localStorage.getItem(LS.cod) || '';
+  try { const pk = JSON.parse(localStorage.getItem(LS.pachet) || 'null'); if (pk && pk.cfg) aplicaPachet(pk); } catch (e) { }
+  const arataEroareCod = e => { $('lockErr').textContent = e.name === 'OperationError' ? 'Codul din link nu e bun. Cere linkul nou de la echipă.' : 'Prima dată ai nevoie de internet.'; $('lockErr').hidden = false; };
+  const inFundal = c => incarcaDate(c).then(nou => { if (nou && curView === 'start') renderStart(); })
+    .catch(e => { if (e.name === 'OperationError') toast('Lista echipei s-a schimbat: deschide linkul nou primit.', 6000); });
+  if (codUrl && codUrl !== codSalvat) {              // link nou sau alt cod
+    try { await incarcaDate(codUrl, true); }
+    catch (e) { if (!PACHET) arataEroareCod(e); else if (codSalvat) inFundal(codSalvat); }
+  } else if (codUrl || codSalvat) {
+    if (PACHET) inFundal(codUrl || codSalvat);
+    else { try { await incarcaDate(codUrl || codSalvat, true); } catch (e) { arataEroareCod(e); } }
   }
   if (!PACHET) { nav = { stack: [], pos: -1 }; navReplace('lock'); show('lock'); return; }
   // după reîncărcare (ex. telefonul a închis pagina cât era deschisă camera) refac istoricul de unde era

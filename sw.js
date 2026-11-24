@@ -1,10 +1,11 @@
 // Online-first: ia mereu versiunea nouă de pe net (verificată de fiecare dată, fără cache-ul vechi al browserului);
 // din cache doar dacă netul pică sau e foarte lent. Fișierele au versiunea în adresă (?v=), deci nu se amestecă versiuni.
-const V = '0.4.0';
+const V = '0.4.1';
 const CACHE = 'constatari-v' + V;
 const FILES = ['./', './index.html', `./style.css?v=${V}`, `./app.js?v=${V}`, `./lib/gifenc.js?v=${V}`, './date.bin.json', './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png'];
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(CACHE).then(c => Promise.all(FILES.map(f => fetch(new Request(f, { cache: 'no-cache' })).then(r => r.ok && c.put(f, r)).catch(() => { })))));
+  // dacă un fișier nu vine (semnal slab), instalarea eșuează și rămâne versiunea veche, întreagă
+  e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES.map(f => new Request(f, { cache: 'no-cache' })))));
   self.skipWaiting();
 });
 self.addEventListener('activate', e => {
@@ -17,7 +18,9 @@ self.addEventListener('fetch', e => {
   const nav = req.mode === 'navigate';
   const proaspat = nav ? new Request(req.url, { cache: 'no-cache', credentials: 'same-origin' }) : new Request(req, { cache: 'no-cache' });
   const net = fetch(proaspat).then(res => {
-    if (res.ok) { const copy = res.clone(); caches.open(CACHE).then(c => c.put(nav ? './index.html' : req, copy)); }
+    if (res.ok && !nav) { const copy = res.clone(); caches.open(CACHE).then(c => c.put(req, copy)); }
+    // pagina se pune în cache doar dacă e din ACEEAȘI versiune cu acest service worker
+    if (res.ok && nav) res.clone().text().then(t => { if (t.includes('data-ver="' + V + '"')) caches.open(CACHE).then(c => c.put('./index.html', new Response(t, { headers: { 'Content-Type': 'text/html; charset=utf-8' } }))); }).catch(() => { });
     return res;
   });
   e.waitUntil(net.then(() => { }, () => { }));

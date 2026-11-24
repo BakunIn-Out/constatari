@@ -220,6 +220,9 @@ button.alta { display: flex; align-items: center; gap: 10px; width: 100%; min-he
 .semn a { color: var(--faint); text-decoration: none; font: 500 11.5px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: .14em; text-transform: lowercase; }
 .semn a b { font-weight: 700; background: linear-gradient(90deg, #0b5cad, #6d28d9); -webkit-background-clip: text; background-clip: text; color: transparent; }
 
+/* cât se pregătește video-ul / se salvează: nimic nou de adăugat */
+.mediabusy .galerie, .salvez .mbtn, .salvez .galerie, .salvez #btnMic, .salvez .chip, .salvez button.alta { opacity: .45; pointer-events: none; }
+
 /* constatările mele */
 .filtre { margin-top: 14px; }
 .grup { width: 100%; display: flex; align-items: center; gap: 10px; margin: 22px 0 0; padding: 12px 14px; border: 0; border-radius: 14px;
