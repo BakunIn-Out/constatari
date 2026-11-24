@@ -188,6 +188,12 @@ select.alta { width: 100%; min-height: 52px; margin-top: 12px; padding: 0 14px; 
 .sheetbox .st { font-size: 20px; font-weight: 750; text-align: center; margin: 2px 0 6px; }
 .sheetbox .btn.block { margin-top: 12px; }
 
+/* până pornește aplicația: niciodată ecran gol */
+.incarc { position: fixed; inset: 60px 0 0; z-index: 10; display: flex; align-items: center; justify-content: center; gap: 12px; color: var(--muted); font-size: 18px; }
+.eroare { position: fixed; inset: 0; z-index: 80; display: flex; align-items: center; justify-content: center; padding: 20px; background: rgba(15,23,42,.5); }
+.eroare .eb { width: 100%; max-width: 480px; padding: 22px 18px; border-radius: 18px; background: var(--surface); font-size: 18px; }
+.eroare .msg { color: var(--muted); font-size: 15px; word-break: break-word; }
+
 .toast { position: fixed; left: 50%; bottom: calc(96px + env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 70;
   width: max-content; max-width: min(92vw, 560px); padding: 14px 18px; border-radius: 14px; background: #0f172a; color: #fff; font-size: 17px;
   box-shadow: 0 8px 24px rgba(0,0,0,.2); }

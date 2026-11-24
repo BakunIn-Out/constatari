@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="ro">
+<html lang="ro" data-ver="0.3.1">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -11,7 +11,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
-<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="style.css?v=0.3.1">
 </head>
 <body>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
@@ -184,10 +184,46 @@
     <button id="shRamai" class="btn block" type="button">Rămân aici</button>
   </div>
 </div>
+<div id="incarc" class="incarc"><span class="spin"></span><span>Se deschide…</span></div>
+<div id="eroare" class="eroare" hidden>
+  <div class="eb">
+    <b>Ceva n-a mers.</b>
+    <p class="msg"></p>
+    <button id="btnRepara" class="btn primary block big" type="button" onclick="reparaAplicatia(true)">Repară și redeschide</button>
+  </div>
+</div>
 <div id="toast" class="toast" hidden></div>
 <div id="print" class="print"></div>
 
-<script src="lib/gifenc.js"></script>
-<script src="app.js"></script>
+<script>
+// Repară: dacă browserul a păstrat fișiere dintr-o versiune veche (cache / service worker), le șterge și redeschide pagina curat.
+function reparaAplicatia(fortat) {
+  try {
+    var t = Number(sessionStorage.getItem('constatari_repar') || 0);
+    if (!fortat && Date.now() - t < 60000) return;          // o singură dată pe minut: fără bucle
+    sessionStorage.setItem('constatari_repar', String(Date.now()));
+  } catch (e) { }
+  var gata = function () { var u = new URL(location.href); u.searchParams.set('r', Date.now()); u.hash = ''; location.replace(u.toString()); };
+  var p = [];
+  try { if (window.caches) p.push(caches.keys().then(function (k) { return Promise.all(k.map(function (x) { return caches.delete(x); })); })); } catch (e) { }
+  try { if (navigator.serviceWorker) p.push(navigator.serviceWorker.getRegistrations().then(function (r) { return Promise.all(r.map(function (x) { return x.unregister(); })); })); } catch (e) { }
+  Promise.all(p).then(gata, gata); setTimeout(gata, 3000);
+}
+window.addEventListener('error', function (e) {
+  if (window.__aplicatiaPornita) {                          // aplicația merge deja: doar un mesaj scurt, nu blochez ecranul
+    var t = document.getElementById('toast'); if (t) { t.textContent = 'Eroare: ' + ((e && e.message) || ''); t.hidden = false; setTimeout(function () { t.hidden = true; }, 5000); }
+    return;
+  }
+  var b = document.getElementById('eroare'); if (!b) return;
+  b.querySelector('.msg').textContent = (e && e.message) || 'eroare necunoscută';
+  b.hidden = false; var l = document.getElementById('incarc'); if (l) l.hidden = true;
+});
+</script>
+<script src="lib/gifenc.js?v=0.3.1"></script>
+<script src="app.js?v=0.3.1"></script>
+<script>
+// pagina și codul trebuie să fie din aceeași versiune; altfel repar singur (o dată)
+(function () { var v = document.documentElement.getAttribute('data-ver'); if (typeof APP_VER === 'undefined' || APP_VER !== v) reparaAplicatia(false); })();
+</script>
 </body>
 </html>

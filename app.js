@@ -6,7 +6,25 @@
    Datele stau pe telefon (IndexedDB). Spre AI (doar când completează) pleacă textul + imaginile constatării
    și câteva rânduri-exemplu din backup-ul importat (ca să scrie în același stil). */
 
-const APP_VER = '0.3.0';
+const APP_VER = '0.3.1';
+// pagină veche (din cache) + cod nou -> nu pornesc pe jumătate: șterg memoria veche și redeschid curat
+if (document.documentElement.getAttribute('data-ver') !== APP_VER) {
+  (window.reparaAplicatia || function () {
+    try { if (Date.now() - Number(sessionStorage.getItem('constatari_repar') || 0) < 60000) return; sessionStorage.setItem('constatari_repar', String(Date.now())); } catch (e) { }
+    const gata = () => { const u = new URL(location.href); u.searchParams.set('r', Date.now()); u.hash = ''; location.replace(u.toString()); };
+    Promise.all([
+      window.caches ? caches.keys().then(k => Promise.all(k.map(x => caches.delete(x)))) : 0,
+      navigator.serviceWorker ? navigator.serviceWorker.getRegistrations().then(r => Promise.all(r.map(x => x.unregister()))) : 0
+    ]).then(gata, gata); setTimeout(gata, 3000);
+  })(false);
+  throw new Error('versiune veche în memoria browserului - repar');
+}
+window.addEventListener('unhandledrejection', e => {
+  if (window.__aplicatiaPornita) return;            // după pornire, erorile mărunte nu blochează ecranul
+  const b = document.getElementById('eroare'); if (!b) return;
+  b.querySelector('.msg').textContent = (e.reason && e.reason.message) || String(e.reason);
+  b.hidden = false; const l = document.getElementById('incarc'); if (l) l.hidden = true;
+});
 const LS = { user: 'constatari_user', ses: 'constatari_sesiune', cod: 'constatari_cod', pachet: 'constatari_pachet', pachetCt: 'constatari_pachet_ct' };
 const DEF = {
   locatii: [], etaje: {}, apartamente: {},
@@ -255,6 +273,7 @@ function show(v) {
   if (v === 'apt' && !ses.apt) v = 'start';
   if (location.hash !== '#' + v || !history.state || history.state.d !== nav.pos) navReplace(v);
   curView = v;
+  window.__aplicatiaPornita = true; $('incarc').hidden = true;
   Object.entries(VIEWS).forEach(([k, id]) => { $(id).hidden = k !== v; });
   $('btnBack').hidden = v === 'start' || v === 'lock';
   $('btnSetari').hidden = v === 'setari' || v === 'obs' || v === 'lock';
