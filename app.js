@@ -6,7 +6,7 @@
    Datele stau pe telefon (IndexedDB). Spre AI (doar când completează) pleacă textul + imaginile constatării
    și câteva rânduri-exemplu din backup-ul importat (ca să scrie în același stil). */
 
-const APP_VER = '0.5.1';
+const APP_VER = '0.5.2';
 // pagină veche (din cache) + cod nou -> nu pornesc pe jumătate: șterg memoria veche și redeschid curat
 if (document.documentElement.getAttribute('data-ver') !== APP_VER) {
   (window.reparaAplicatia || function () {
@@ -699,15 +699,27 @@ async function compress(file, MAX = 1600, q = 0.72) {
   const url = URL.createObjectURL(file);
   try { return await imgToJpeg(url, MAX, q); } finally { URL.revokeObjectURL(url); }
 }
-async function imgToJpeg(src, MAX, q) {
+async function imgToJpeg(src, MAX, q, lumina) {
   const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error('imagine')); i.src = src; });
   const s = Math.min(1, MAX / Math.max(img.naturalWidth, img.naturalHeight));
   const w = Math.max(1, Math.round(img.naturalWidth * s)), h = Math.max(1, Math.round(img.naturalHeight * s));
   const c = document.createElement('canvas'); c.width = w; c.height = h;
   const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, w, h); g.drawImage(img, 0, 0, w, h);
+  if (lumina) lumineaza(g, w, h);
   const out = c.toDataURL('image/jpeg', q);
   c.width = c.height = 0;                          // iPhone are o limită totală de memorie pentru canvas
   return out;
+}
+// raport: pozele clar întunecate se luminează ușor (gamma), fără să schimbi altceva
+function lumineaza(g, w, h) {
+  let d; try { d = g.getImageData(0, 0, w, h); } catch (e) { return; }
+  const a = d.data; let sum = 0, n = 0;
+  for (let i = 0; i < a.length; i += 64) { sum += 0.299 * a[i] + 0.587 * a[i + 1] + 0.114 * a[i + 2]; n++; }
+  const m = sum / n / 255; if (!(m > 0.02 && m < 0.38)) return;
+  const gm = Math.max(0.6, Math.log(0.46) / Math.log(m)), lut = new Uint8ClampedArray(256);
+  for (let v = 0; v < 256; v++) lut[v] = Math.round(255 * Math.pow(v / 255, gm));
+  for (let i = 0; i < a.length; i += 4) { a[i] = lut[a[i]]; a[i + 1] = lut[a[i + 1]]; a[i + 2] = lut[a[i + 2]]; }
+  g.putImageData(d, 0, 0);
 }
 const eVideo = f => /^video\//.test(f.type) || /\.(mp4|mov|m4v|webm|3gp|mkv)$/i.test(f.name || '');
 function jobNou(ed, tip) {
@@ -1268,20 +1280,23 @@ $('btnExpPdf').onclick = unaCateUna(async () => {
   let nr = 0;
   for (const [, l] of g) {
     const r0 = l[0];
-    h += `<section class="rap-ap"><h2>${esc(r0.apt)}<span>${esc(r0.locatie)} · ${esc(r0.etaj)}</span></h2>`;
-    const rez = ai && ai.peAp[cheieAp(r0)]; if (rez) h += `<p class="rez">${esc(rez)}</p>`;
+    // antetul apartamentului rămâne pe aceeași pagină cu prima constatare; titlul încăperii, cu prima ei constatare
+    const rez = ai && ai.peAp[cheieAp(r0)];
+    let antet = `<h2>${esc(r0.apt)}<span>${esc(r0.locatie)} · ${esc(r0.etaj)}</span></h2>${rez ? `<p class="rez">${esc(rez)}</p>` : ''}`;
+    h += `<section class="rap-ap">`;
     const pe = new Map(); l.forEach(r => { const i = r.inc || 'Fără încăpere'; if (!pe.has(i)) pe.set(i, []); pe.get(i).push(r); });
     for (const [inc, rs] of pe) {
-      h += `<h3>${esc(inc)}</h3>`;
-      for (const r of rs) {
+      for (const [ri, r] of rs.entries()) {
         nr++;
         const idx = recs.indexOf(r) + 1;
         const text = (ai && ai.texte[idx]) || r.obs || '';
         const pz = r.nPoze ? await dbPoze(r.id).catch(() => []) : [];
         let fig = '';
-        for (const x of pz) { let m = ''; try { m = await imgToJpeg(x, 900, 0.72); } catch (e) { continue; } fig += `<figure><img src="${m}" alt="">${isGif(x) ? '<figcaption>cadru din video</figcaption>' : ''}</figure>`; }
+        for (const x of pz) { let m = ''; try { m = await imgToJpeg(x, 720, 0.72, !isGif(x)); } catch (e) { continue; } fig += `<figure><img src="${m}" alt="">${isGif(x) ? '<figcaption>cadru din video</figcaption>' : ''}</figure>`; }
         const meta = [r.tip, r.spec, (r.resp || []).join(', '), r.termen ? 'termen ' + r.termen.split('-').reverse().join('.') : ''].filter(Boolean).join(' · ');
-        h += `<div class="o"><div class="ot"><span class="nr">${nr}.</span>${esc(text)}</div>${meta ? `<div class="m">${esc(meta)}</div>` : ''}${fig ? `<div class="ph">${fig}</div>` : ''}</div>`;
+        const fh = `<div class="o${fig ? ' cu' : ''}"><div class="oc"><div class="ot"><span class="nr">${nr}.</span>${esc(text)}</div>${meta ? `<div class="m">${esc(meta)}</div>` : ''}</div>${fig ? `<div class="ph">${fig}</div>` : ''}</div>`;
+        const titlu = ri === 0 ? `<h3>${esc(inc)}</h3>` : '';
+        if (antet || titlu) { h += `<div class="cap">${antet}${titlu}${fh}</div>`; antet = ''; } else h += fh;
       }
     }
     h += `</section>`;
