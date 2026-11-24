@@ -6,7 +6,7 @@
    Datele stau pe telefon (IndexedDB). Spre AI (doar când completează) pleacă textul + imaginile constatării
    și câteva rânduri-exemplu din backup-ul importat (ca să scrie în același stil). */
 
-const APP_VER = '0.5.2';
+const APP_VER = '0.5.3';
 // pagină veche (din cache) + cod nou -> nu pornesc pe jumătate: șterg memoria veche și redeschid curat
 if (document.documentElement.getAttribute('data-ver') !== APP_VER) {
   (window.reparaAplicatia || function () {
@@ -631,6 +631,8 @@ const REGULI_SPEC = [
   ['Instalatii sanitare', /\bteav|scurger|pierdere (de )?apa|infiltra|\bcoloan|apometru|robinet/],
   ['Confectii metalice', /balustrad|\bparapet|\bmetalic/],
   ['Usi de interior', /\busa\b|\busi(le)?\b|\busii\b|\btoc(ul|uri)?\b|\bbalama|\bclant|\bmaner|\bcant(ul)?\b|\bopritor|\bchei/],
+  ['Decorativa', /decorativ/],
+  ['Finisaje exterioare', /fatad|exterio|\bsoclu|termosistem|termoizol|polistiren/],
   ['Glet', /\bglet|slefui|\bfisur|\bcoltar|\bintrados|\bolnit|\bperete|\bpereti|\btavan|\bspalet/],
   ['Tencuiala', /tencuial/],
   ['Zugraveli lavabile', /zugrav|lavabil|\bvopse|\bretus|\bamors/],
@@ -1030,6 +1032,7 @@ Il rescrii ca UN rand scurt pentru aplicatia de verificari ("obs"): de regula su
 - Imaginile le folosesti doar ca sa precizezi ce a spus (ce element, ce parte, sus/jos, interior/exterior) si DOAR cu ce se vede sigur; daca nu esti sigur, nu adaugi nimic din imagine.
 - Mai multe probleme la acelasi element: in acelasi rand, separate prin "; ".
 - Corectezi cuvintele recunoscute gresit dupa glosar (ex. "spalier" -> "spalet", "ce te" -> "CT").
+- Textul e adesea prescurtat; NU il reinterpretezi. Ex.: "Reparatii glet nefinalizat" = stadiul reparatiilor la glet: nefinalizat -> ramane "Reparatii glet nefinalizat"; "Reparatii nefinalizate decorativa" ramane asa.
 Exemple de stil: "Toc usa baie zgariat (partea superioara)" · "Usa dormitor nu se inchide" · "Usa acces zgariata" · "Usa baie cu dus atinge tocul la inchidere" · "Usa baie dus nu este in boloboc" · "Coltar grinda living nu este drept" · "Urme de slefuit pe intrados" · "Spalet fereastra nefinisat in partea de jos" · "Lavabil scurs sub priza" · "Masca cada nu este in linie cu cada" · "Rampa CT murdara de vopsea" · "Folie lichida neindepartata de pe tamplarie".
 Glosar: infoliat = acoperit cu folie de protectie · de reglat = trebuie reglat (ex. tamplarie de reglat) · spalet = latura golului de usa/fereastra · intrados = fata de dedesubt a grinzii · coltar = profilul de pe muchie · olnita = racordul/muchia dintre doua suprafete · aparataj = prize, intrerupatoare · CT = centrala termica · rampa CT = tevile de sub centrala · masca cada = panoul care inchide cada · distantiere = crucitele dintre placi · defoliat = scoasa folia de protectie · folie lichida · beton contact · reparatii perimetrale = retusurile din jurul ramei/tocului · toc · foaie usa · pervaz · glaf · plinta · balamale · broasca · yala · maner · garnitura · prag · glet · lavabil · chit · boloboc (nu e in boloboc = nu e drept/la nivel) · are joc = se misca, nu sta fix.
 Raspunzi DOAR cu JSON: {"obs":""}`;
@@ -1218,15 +1221,12 @@ $('btnExpCsv').onclick = unaCateUna(async () => {
   const blob = new Blob(['\ufeff' + [cols.join(';')].concat(rows).join('\r\n')], { type: 'text/csv' });
   await shareOrDownload(blob, `constatari_${stamp()}.csv`);
 });
-const PROMPT_TEXTE = `Primesti constatari de pe un santier (verificarea apartamentelor noi inainte de predare). Pentru fiecare, rescrii "text" ca o propozitie scurta, clara, profesionala, in limba romana CU diacritice, prima litera mare, fara punct la final.
-OBLIGATORIU cu diacritice (ă, â, î, ș, ț), chiar daca textul primit nu le are. Exemplu: "Usa dormitor nu se inchide" -> "Ușa dormitorului nu se închide".
-Pastrezi exact sensul. NU adaugi si NU scoti probleme, NU inventezi detalii. "de reglat" ramane "de reglat" (= trebuie reglat), NU "dereglat".
-Termeni de santier: spalet, intrados, coltar, olnita, aparataj, CT, glet, lavabil, chit, plinta, toc, glaf, înfoliat (cu î), de reglat, tamplarie.
-Raspunzi DOAR cu JSON: {"texte":[{"n":1,"text":"..."}]}`;
+// raportul: textul din „Spune ce e” rămâne EXACT cum l-a scris omul (utilizatorul, 24.11); AI-ul scrie doar rezumatul
 const PROMPT_REZUMAT = `Primesti lista constatarilor dintr-o verificare de apartamente (santier). Scrii in limba romana CU diacritice, sobru, doar ce reiese din lista:
-- "pe_scurt": 3-6 puncte scurte: problemele principale si cele care se repeta (cate apartamente / constatari), pe firme daca reiese;
-- "apartamente": pentru fiecare apartament ("ap" exact ca in lista), un rand de rezumat de maximum 18 cuvinte.
-Raspunzi DOAR cu JSON: {"pe_scurt":["..."],"apartamente":[{"ap":"...","rezumat":"..."}]}`;
+Textele sunt scrise in graba, prescurtat. NU le reinterpretezi: folosesti cuvintele lor. Ex.: "Reparatii glet nefinalizat" = stadiul reparatiilor la glet este nefinalizat (NU "glet nefinalizat");
+"Reparatii nefinalizate decorativa" = reparatiile la decorativa sunt nefinalizate; "de reglat" = trebuie reglat (NU "dereglat"). Cand nu e clar, scrii aproape identic cu textul.
+- "pe_scurt": 3-6 puncte scurte: problemele principale si cele care se repeta (in ce apartamente), pe firme daca reiese.
+Raspunzi DOAR cu JSON: {"pe_scurt":["..."]}`;
 function jsonObj(x) {
   if (typeof x !== 'string') return null;
   try { return JSON.parse(x); } catch (e) { }
@@ -1245,19 +1245,9 @@ async function cerereAi(prompt, date, ms) {
 }
 const cheieAp = r => `${r.apt} · ${r.locatie} · ${r.etaj}`;
 async function aiRaport(recs, prog) {
-  const items = recs.map((r, i) => ({ n: i + 1, ap: cheieAp(r), inc: r.inc, text: r.obs || '', spec: r.spec, firma: (r.resp || []).join(', ') }));
-  const loturi = []; for (let i = 0; i < items.length; i += 40) loturi.push(items.slice(i, i + 40));
-  const texte = {}; let gata = 0;
-  prog('Formulez textele…');
-  await Promise.all(loturi.map(async lot => {
-    const o = await cerereAi(PROMPT_TEXTE, lot.map(x => ({ n: x.n, text: x.text })), 90000);
-    (o.texte || []).forEach(x => { if (x && x.n && typeof x.text === 'string' && x.text.trim()) texte[x.n] = x.text.trim(); });
-    gata += lot.length; prog(`Formulez textele… ${gata}/${items.length}`);
-  }));
   prog('Scriu rezumatul…');
-  const o2 = await cerereAi(PROMPT_REZUMAT, items.map(x => ({ ap: x.ap, incapere: x.inc, text: texte[x.n] || x.text, specialitate: x.spec, firma: x.firma })), 90000);
-  return { texte, peScurt: Array.isArray(o2.pe_scurt) ? o2.pe_scurt.filter(x => typeof x === 'string') : [],
-    peAp: Object.fromEntries((o2.apartamente || []).filter(a => a && a.ap).map(a => [a.ap, String(a.rezumat || '')])) };
+  const o2 = await cerereAi(PROMPT_REZUMAT, recs.map(r => ({ ap: cheieAp(r), incapere: r.inc, text: r.obs || '', specialitate: r.spec, firma: (r.resp || []).join(', ') })), 90000);
+  return { peScurt: Array.isArray(o2.pe_scurt) ? o2.pe_scurt.filter(x => typeof x === 'string') : [] };
 }
 $('btnExpPdf').onclick = unaCateUna(async () => {
   const recs = recsExport();
@@ -1281,15 +1271,13 @@ $('btnExpPdf').onclick = unaCateUna(async () => {
   for (const [, l] of g) {
     const r0 = l[0];
     // antetul apartamentului rămâne pe aceeași pagină cu prima constatare; titlul încăperii, cu prima ei constatare
-    const rez = ai && ai.peAp[cheieAp(r0)];
-    let antet = `<h2>${esc(r0.apt)}<span>${esc(r0.locatie)} · ${esc(r0.etaj)}</span></h2>${rez ? `<p class="rez">${esc(rez)}</p>` : ''}`;
+    let antet = `<h2>${esc(r0.apt)}<span>${esc(r0.locatie)} · ${esc(r0.etaj)}</span></h2>`;
     h += `<section class="rap-ap">`;
     const pe = new Map(); l.forEach(r => { const i = r.inc || 'Fără încăpere'; if (!pe.has(i)) pe.set(i, []); pe.get(i).push(r); });
     for (const [inc, rs] of pe) {
       for (const [ri, r] of rs.entries()) {
         nr++;
-        const idx = recs.indexOf(r) + 1;
-        const text = (ai && ai.texte[idx]) || r.obs || '';
+        const text = r.obs || '';
         const pz = r.nPoze ? await dbPoze(r.id).catch(() => []) : [];
         let fig = '';
         for (const x of pz) { let m = ''; try { m = await imgToJpeg(x, 720, 0.72, !isGif(x)); } catch (e) { continue; } fig += `<figure><img src="${m}" alt="">${isGif(x) ? '<figcaption>cadru din video</figcaption>' : ''}</figure>`; }
@@ -1301,7 +1289,7 @@ $('btnExpPdf').onclick = unaCateUna(async () => {
     }
     h += `</section>`;
   }
-  h += `<div class="rfoot">Constatări v${esc(APP_VER)}${ai ? ' · texte formulate cu AI' : ''}</div>`;
+  h += `<div class="rfoot">Constatări v${esc(APP_VER)}${ai ? ' · rezumat făcut cu AI' : ''}</div>`;
   $('print').innerHTML = h;
   clearTimeout(toastT); $('toast').hidden = true;
   for (const i of $('print').querySelectorAll('img')) { try { if (i.decode) await i.decode(); } catch (e) { } }
