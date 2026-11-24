@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="ro" data-ver="0.3.2">
+<html lang="ro" data-ver="0.4.0">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -11,7 +11,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
-<link rel="stylesheet" href="style.css?v=0.3.2">
+<link rel="stylesheet" href="style.css?v=0.4.0">
 </head>
 <body>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
@@ -52,11 +52,11 @@
   <section id="vLock" class="view" hidden>
     <div class="lock">
       <svg><use href="#i-lock"/></svg>
-      <h2>Deschide linkul primit de la echipă</h2>
-      <p>O singură dată pe telefon. Sau scrie codul echipei:</p>
+      <h2>Scrie codul echipei</h2>
+      <p>Sau deschide linkul primit pe WhatsApp. O singură dată pe telefon.</p>
       <input id="inCod" type="text" inputmode="text" autocapitalize="characters" autocomplete="off" spellcheck="false" placeholder="ex. ABCD-1234">
-      <button id="btnCod" class="btn primary block big">Deschide aplicația</button>
       <p id="lockErr" class="err" hidden></p>
+      <button id="btnCod" class="btn primary block big">Deschide aplicația</button>
     </div>
   </section>
 
@@ -74,7 +74,7 @@
     </button>
 
     <h2 class="h">Unde ești?</h2>
-    <div class="pas"><span class="nr">1</span>Clădirea</div>
+    <div class="pas"><span class="nr">1</span>Clădirea sau zona</div>
     <div id="gLoc" class="tiles"></div>
     <div id="blocEtaj" hidden>
       <div class="pas"><span class="nr">2</span>Etajul</div>
@@ -91,12 +91,16 @@
     <button id="btnLaGata" class="btn block">
       <svg><use href="#i-upload"/></svg><span>Trimite constatările</span><span id="stNoi" class="pill"></span>
     </button>
+    <footer class="semn">
+      <span id="verApp" class="v"></span>
+      <a href="https://0xhuo.dev" target="_blank" rel="noopener">crafted by <b>0xhuo</b></a>
+    </footer>
   </section>
 
   <!-- CONSTATĂRILE MELE: tot ce e pe telefon, pe apartamente -->
   <section id="vMele" class="view" hidden>
-    <input id="meleCauta" class="cauta" type="search" placeholder="Caută: apartament, încăpere, text, firmă" autocomplete="off">
-    <p class="info">Atinge o constatare ca s-o vezi, s-o schimbi sau s-o ștergi.</p>
+    <input id="meleCauta" class="cauta" type="search" placeholder="Caută (apartament, încăpere, text)" autocomplete="off">
+    <p class="info">Atinge una ca s-o schimbi sau s-o ștergi.</p>
     <div class="chips filtre">
       <button type="button" class="chip on" data-f="toate">Toate</button>
       <button type="button" class="chip" data-f="netrimise">De trimis</button>
@@ -136,21 +140,21 @@
       <label class="mbtn"><svg><use href="#i-video"/></svg><span>Video</span><input id="inVid" type="file" accept="video/*" capture="environment" hidden></label>
     </div>
     <div id="thumbs" class="thumbs"></div>
-    <label class="galerie">sau alege din galerie<input id="inGal" type="file" accept="image/*,video/*" multiple hidden></label>
+    <label class="galerie"><svg><use href="#i-image"/></svg>sau alege din galerie<input id="inGal" type="file" accept="image/*,video/*" multiple hidden></label>
 
     <div class="pas"><span class="nr">2</span>Spune ce e</div>
     <button id="btnMic" class="mic" type="button"><svg><use href="#i-mic"/></svg><span>Apasă și vorbește</span></button>
     <div id="micInfo" class="info"></div>
-    <textarea id="txtObs" rows="2" placeholder="sau scrie aici"></textarea>
+    <textarea id="txtObs" rows="2" placeholder="sau scrie aici (ex.: ușa de la baie, tocul zgâriat sus)"></textarea>
     <div id="aiBar" class="aibar" hidden></div>
     <button id="btnAi" class="linkbtn" type="button" hidden><svg><use href="#i-spark"/></svg>Completează automat textul</button>
 
     <div class="pas"><span class="nr">3</span>Încăperea</div>
     <div id="incChips" class="chips"></div>
-    <button id="incAlta" class="alta" type="button">Altă încăpere… (caută)</button>
+    <button id="incAlta" class="alta" type="button">Altă încăpere…</button>
 
     <details id="detObs" class="det">
-      <summary><span>Detalii</span><span id="sumObs" class="sum"></span></summary>
+      <summary><span>Detalii (opțional)</span><span id="sumObs" class="sum"></span></summary>
       <label class="frow"><span class="fl">Specialitate</span><span id="oSpec" class="fc"></span></label>
       <label class="frow"><span class="fl">Tip</span><span id="oTip" class="fc"></span></label>
       <label class="frow"><span class="fl">Prioritate</span><span id="oPrio" class="fc"></span></label>
@@ -167,15 +171,11 @@
 
   <!-- TRIMITE / EXPORT -->
   <section id="vGata" class="view" hidden>
-    <div class="tiles3">
-      <div class="tile"><div id="gxObs" class="tn">0</div><div class="tl">constatări</div></div>
-      <div class="tile"><div id="gxPoze" class="tn">0</div><div class="tl">poze / GIF</div></div>
-      <div class="tile"><div id="gxApt" class="tn">0</div><div class="tl">locuri</div></div>
-    </div>
+    <p id="gxRez" class="rez"></p>
     <label class="switch"><input id="doarNoi" type="checkbox" checked><span class="sw"></span><span>Doar ce nu am trimis încă</span></label>
 
-    <button id="btnExpApp" class="btn primary block big"><svg><use href="#i-upload"/></svg>Fișier pentru aplicația de verificări</button>
-    <p class="info">Apoi, în aplicația de verificări: meniu → „Combina backup-uri”.</p>
+    <button id="btnExpApp" class="btn primary block big"><svg><use href="#i-upload"/></svg><span id="lblExpApp">Salvează fișierul pe telefon</span></button>
+    <p class="info">Fișierul se pune în aplicația de verificări: meniu → „Combina backup-uri”.</p>
     <button id="btnExpPdf" class="btn block"><svg><use href="#i-file"/></svg>Raport PDF cu poze</button>
     <button id="btnExpCsv" class="btn block"><svg><use href="#i-table"/></svg>Tabel Excel</button>
 
@@ -246,8 +246,8 @@ window.addEventListener('error', function (e) {
   b.hidden = false; var l = document.getElementById('incarc'); if (l) l.hidden = true;
 });
 </script>
-<script src="lib/gifenc.js?v=0.3.2"></script>
-<script src="app.js?v=0.3.2"></script>
+<script src="lib/gifenc.js?v=0.4.0"></script>
+<script src="app.js?v=0.4.0"></script>
 <script>
 // pagina și codul trebuie să fie din aceeași versiune; altfel repar singur (o dată)
 (function () { var v = document.documentElement.getAttribute('data-ver'); if (typeof APP_VER === 'undefined' || APP_VER !== v) reparaAplicatia(false); })();

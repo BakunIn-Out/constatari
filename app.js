@@ -6,7 +6,7 @@
    Datele stau pe telefon (IndexedDB). Spre AI (doar când completează) pleacă textul + imaginile constatării
    și câteva rânduri-exemplu din backup-ul importat (ca să scrie în același stil). */
 
-const APP_VER = '0.3.2';
+const APP_VER = '0.4.0';
 // pagină veche (din cache) + cod nou -> nu pornesc pe jumătate: șterg memoria veche și redeschid curat
 if (document.documentElement.getAttribute('data-ver') !== APP_VER) {
   (window.reparaAplicatia || function () {
@@ -82,11 +82,20 @@ let _db;
 function db() {
   if (_db) return Promise.resolve(_db);
   return new Promise((res, rej) => {
-    const r = indexedDB.open('constatari', 2);
-    r.onupgradeneeded = () => {
-      const d = r.result;
+    const r = indexedDB.open('constatari', 3);
+    r.onupgradeneeded = e => {
+      const d = r.result, t = r.transaction;
       if (!d.objectStoreNames.contains('obs')) d.createObjectStore('obs', { keyPath: 'id' });
       if (!d.objectStoreNames.contains('draft')) d.createObjectStore('draft', { keyPath: 'k' });
+      if (!d.objectStoreNames.contains('poze')) d.createObjectStore('poze', { keyPath: 'id' });
+      if (e.oldVersion > 0 && e.oldVersion < 3) {        // constatările vechi: pozele se mută în depozitul lor
+        const so = t.objectStore('obs'), sp = t.objectStore('poze');
+        so.openCursor().onsuccess = ev => {
+          const c = ev.target.result; if (!c) return;
+          if (Array.isArray(c.value.poze)) { sp.put({ id: c.value.id, poze: c.value.poze }); c.update(usoara(c.value)); }
+          c.continue();
+        };
+      }
     };
     r.onsuccess = () => {
       const d = r.result; _db = d;
@@ -103,7 +112,7 @@ async function tx(store, mode, fn, retry = true) {
   try {
     d = await db();
     return await new Promise((res, rej) => {
-      const t = d.transaction(store, mode); const out = fn(t.objectStore(store));
+      const t = d.transaction(store, mode); const out = fn(Array.isArray(store) ? t : t.objectStore(store));
       t.oncomplete = () => res(out && 'result' in out ? out.result : undefined);
       t.onerror = () => rej(t.error); t.onabort = () => rej(t.error || new Error('memorie plină?'));
     });
@@ -114,12 +123,31 @@ async function tx(store, mode, fn, retry = true) {
     throw e;
   }
 }
+// constatarea „ușoară” (fără pozele mari): asta stă în listă și în memorie; pozele se citesc doar la deschidere / trimitere
+function usoara(r) {
+  const { poze, poza, ...o } = r;
+  if (Array.isArray(poze)) { o.nPoze = poze.length; o._meta = { ...(o._meta || {}), gif: isGif(poze[0] || '') }; }
+  else o.nPoze = o.nPoze || 0;
+  return o;
+}
 const dbAll = () => tx('obs', 'readonly', st => st.getAll());
-const dbPut = rec => tx('obs', 'readwrite', st => st.put(rec));
-const dbDel = id => tx('obs', 'readwrite', st => st.delete(id));
+const dbPut = rec => tx('obs', 'readwrite', st => st.put(usoara(rec)));               // doar datele, pozele rămân neatinse
+const dbSalveaza = (rec, poze) => tx(['obs', 'poze'], 'readwrite', t => { t.objectStore('obs').put(usoara({ ...rec, poze })); t.objectStore('poze').put({ id: rec.id, poze }); });
+const dbPoze = id => tx('poze', 'readonly', st => st.get(id)).then(x => (x && x.poze) || []);
+const dbDel = id => tx(['obs', 'poze'], 'readwrite', t => { t.objectStore('obs').delete(id); t.objectStore('poze').delete(id); });
 
 let all = [];
-async function reload() { all = (await dbAll()).sort((a, b) => (a._ts || 0) - (b._ts || 0)); }
+async function reload() {
+  const l = await dbAll();
+  for (const r of l.filter(x => Array.isArray(x.poze))) { try { await dbSalveaza(r, r.poze); } catch (e) { } }   // rămășițe în formatul vechi
+  all = l.map(usoara).sort((a, b) => (a._ts || 0) - (b._ts || 0));
+}
+// miniaturi pentru constatările vechi care nu au (una câte una, în fundal)
+async function completeazaMiniaturi() {
+  for (const r of all.filter(x => x.nPoze && !(x._meta && x._meta.thumb))) {
+    try { const pz = await dbPoze(r.id); if (!pz[0]) continue; r._meta = { ...(r._meta || {}), thumb: await imgToJpeg(pz[0], 200, 0.7) }; await dbPut(r); } catch (e) { }
+  }
+}
 function inLista(rec) { all = all.filter(r => r.id !== rec.id); all.push(rec); }
 function dinLista(id) { all = all.filter(r => r.id !== id); }
 
@@ -153,7 +181,8 @@ document.addEventListener('visibilitychange', () => {
 
 /* ---------------- UI mărunt ---------------- */
 let toastT;
-function toast(msg, ms = 2600) {
+function toast(msg, ms = 2200) {
+  if (!$('sheet').hidden) return;                   // nu acopăr butoanele ferestrei Salvează / Nu salva
   const t = $('toast'); t.textContent = msg; t.hidden = false;
   clearTimeout(toastT); toastT = setTimeout(() => { t.hidden = true; }, ms);
 }
@@ -293,7 +322,7 @@ const obsNesalvata = () => !!edit && formDirty && !saving;
 function aruncObs() { if (!edit) return; formDirty = false; stopMic(true); ai.seq++; dropDraft(); edit = null; }
 // în loc de confirm() (unde „OK” = aruncă, apăsat din reflex): trei butoane clare
 function intreabaIesire(dupaAruncare) {
-  const sh = $('sheet'); sh.hidden = false;
+  const sh = $('sheet'); sh.hidden = false; clearTimeout(toastT); $('toast').hidden = true;
   const inchide = () => { sh.hidden = true; };
   $('shSalv').onclick = () => { inchide(); saveForm(); };
   $('shArunc').onclick = () => { inchide(); aruncObs(); dupaAruncare(); };
@@ -305,11 +334,12 @@ function show(v) {
   if (v === 'obs' && !edit) v = ses.apt ? 'apt' : 'start';
   if (v === 'apt' && !ses.apt) v = 'start';
   if (location.hash !== '#' + v || !history.state || history.state.d !== nav.pos) navReplace(v);
-  curView = v;
+  const vechi = curView; curView = v;
   window.__aplicatiaPornita = true; $('incarc').hidden = true;
+  if (vechi !== v) { clearTimeout(toastT); $('toast').hidden = true; }
   Object.entries(VIEWS).forEach(([k, id]) => { $(id).hidden = k !== v; });
   $('btnBack').hidden = v === 'start' || v === 'lock';
-  $('btnSetari').hidden = v === 'setari' || v === 'obs' || v === 'lock';
+  $('btnSetari').hidden = v !== 'start';
   if (v !== 'obs') stopMic(true);
   ({ start: renderStart, apt: renderApt, obs: renderObs, gata: renderGata, setari: renderSetari, lock: renderLock, mele: renderMele })[v]();
   window.scrollTo(0, 0);
@@ -325,7 +355,7 @@ $('btnCod').onclick = async () => {
   if (!cod) { $('inCod').focus(); return; }
   $('btnCod').disabled = true;
   try { await incarcaDate(cod, true); toast('Gata, aplicația e pregătită.'); go('start', true); }
-  catch (e) { $('lockErr').textContent = e.name === 'OperationError' ? 'Codul nu e bun.' : 'Nu am internet. Încearcă din nou.'; $('lockErr').hidden = false; }
+  catch (e) { $('lockErr').textContent = e.name === 'OperationError' ? 'Cod greșit. Cere linkul de la echipă.' : 'Nu am internet. Încearcă din nou.'; $('lockErr').hidden = false; }
   finally { $('btnCod').disabled = false; }
 };
 
@@ -345,7 +375,8 @@ function nrPe(loc, etaj, apt) {
   return n ? String(n) : '';
 }
 function renderStart() {
-  head('Constatări', 'Inspecții pe teren');
+  head('Constatări', '');
+  $('verApp').textContent = 'v ' + APP_VER.split('.').slice(0, 2).join('.');
   $('iosWarn').hidden = !(IOS && !standalone());
   const cont = !!ses.apt && aptPt(ses.locatie, ses.etaj).includes(ses.apt);
   $('btnContinua').hidden = !cont;
@@ -410,11 +441,12 @@ function renderMele() {
 /* ---------------- APARTAMENT ---------------- */
 function recsApt() { return all.filter(r => r.locatie === ses.locatie && r.etaj === ses.etaj && r.apt === ses.apt); }
 function itemHtml(r) {
-  const p = r.poze || []; const n = p.length;
-  const src = (r._meta && r._meta.thumb) || p[0];
-  const img = n ? `<span class="phw"><img class="ph" src="${src}" alt="" loading="lazy">${isGif(p[0]) ? '<span class="badge">GIF</span>' : ''}</span>` : `<div class="ph">${icon('note')}</div>`;
-  const meta = [r.tip, r.spec, (r.resp || []).join(' / '), n ? `${n} ${n === 1 ? 'imagine' : 'imagini'}` : ''].filter(Boolean).map(esc).join('<span>·</span>');
-  const exp = r._meta?.exportat ? ' <span class="pill ok">trimisă</span>' : '';
+  const n = r.nPoze || 0, gif = !!(r._meta && r._meta.gif);
+  const src = r._meta && r._meta.thumb;
+  const img = n && src ? `<span class="phw"><img class="ph" src="${src}" alt="" loading="lazy">${gif ? '<span class="badge">VIDEO</span>' : ''}</span>` : `<div class="ph">${icon(n ? 'image' : 'note')}</div>`;
+  const media = !n ? '' : gif ? (n > 1 ? `video + ${n - 1} ${n - 1 === 1 ? 'poză' : 'poze'}` : 'video') : `${n} ${n === 1 ? 'poză' : 'poze'}`;
+  const meta = [r.tip, r.spec, (r.resp || []).join(' / '), media].filter(Boolean).map(esc).join(' · ');
+  const exp = r._meta?.exportat ? ` <span class="pill ok">${icon('check')}trimisă</span>` : '';
   return `${img}<div class="body"><div class="room">${esc(r.inc || 'Fără încăpere')}</div>
     <div class="d">${esc(r.obs || '(fără descriere)')}</div><div class="m">${meta}${exp}</div></div>`;
 }
@@ -429,7 +461,7 @@ function renderApt() {
   });
   const u = urmApt();
   $('btnAptUrm').hidden = !u;
-  $('btnAptUrm').innerHTML = `${esc(u)}${icon('next')}`;
+  $('btnAptUrm').innerHTML = `<small>Următorul</small><b>${esc(u)} ›</b>`;
   $('btnAptUrm').setAttribute('aria-label', 'Apartamentul următor: ' + u);
 }
 $('btnNou').onclick = () => openObs(null);
@@ -463,8 +495,10 @@ function newRec() {
     _meta: { creat: now.toISOString(), exportat: null }
   };
 }
-function openObs(rec) {
-  edit = rec ? JSON.parse(JSON.stringify(rec)) : newRec();
+async function openObs(rec) {
+  let poze = [];
+  if (rec) { try { poze = await dbPoze(rec.id); } catch (e) { toast('Nu pot citi pozele: ' + e.message, 5000); } }
+  edit = rec ? { ...JSON.parse(JSON.stringify(rec)), poze } : newRec();
   edit.poze = edit.poze || []; edit.resp = edit.resp || [];
   // ce s-a ales la Start pentru toată verificarea contează ca ales de om: AI-ul nu-l schimbă
   atins = rec ? { inc: !!rec.inc, spec: true, tip: true } : { inc: false, spec: !!(ses.specAles && ses.spec), tip: !!(ses.tipAles && ses.tip) };
@@ -487,7 +521,8 @@ function renderObs() {
   $('obsExportat').hidden = !(edit._meta && edit._meta.exportat);
   updFotoBusy();
   renderMicInfo();
-  micUi(); aiUi();
+  $('txtObs').classList.remove('flash');
+  micUi(); aiUi(); updSalv();
 }
 function drawDetalii() {
   field('oSpec', specPt(edit.locatie, edit.etaj), edit.spec, 'specialitate', () => { atins.spec = true; onFormChange(); });
@@ -500,7 +535,12 @@ function drawDetalii() {
 function updSumObs() {
   $('sumObs').textContent = [val('oSpec'), val('oTip'), respObs ? respObs.get().join(' / ') : ''].filter(Boolean).join(' · ') || 'specialitate, tip, firmă';
 }
-function onFormChange() { formDirty = true; updSumObs(); saveDraftSoon(); aiUi(); }
+function onFormChange() { formDirty = true; updSumObs(); saveDraftSoon(); aiUi(); updSalv(); }
+// cât nu e aleasă încăperea, butonul de jos spune asta (altfel omul apasă Salvează și nu înțelege de ce nu merge)
+function updSalv() {
+  const faraInc = !!incChips && !incChips.get().length;
+  $('btnSalv').innerHTML = faraInc ? `Alege încăperea ↓` : `${icon('check')}Salvează`;
+}
 let incAlte = [];
 $('incAlta').onclick = () => alegeDinLista('Altă încăpere', incAlte, '', v => { incChips.add(v); atins.inc = true; onFormChange(); });
 $('txtObs').addEventListener('input', () => { creste(); onFormChange(); });
@@ -511,13 +551,13 @@ function drawThumbs() {
   const box = $('thumbs'); box.innerHTML = '';
   edit.poze.forEach((p, i) => {
     const d = document.createElement('div'); d.className = 'thumb';
-    d.innerHTML = `<img src="${p}" alt="">${isGif(p) ? '<span class="badge">GIF</span>' : ''}<button type="button" aria-label="Scoate imaginea">${icon('x')}</button>`;
+    d.innerHTML = `<img src="${p}" alt="">${isGif(p) ? '<span class="badge">VIDEO</span>' : ''}<button type="button" aria-label="Scoate imaginea">${icon('x')}</button>`;
     d.querySelector('button').onclick = () => { edit.poze.splice(i, 1); pozeVer++; drawThumbs(); onFormChange(); };
     box.appendChild(d);
   });
   inLucru.filter(j => j.ed === edit).forEach(j => {
     const d = document.createElement('div'); d.className = 'thumb busy';
-    d.innerHTML = j.tip === 'video' ? `<div class="prog"><span class="spin"></span><b>${j.pct}%</b><small>fac GIF</small></div>` : `<div class="prog"><span class="spin"></span><small>poză</small></div>`;
+    d.innerHTML = j.tip === 'video' ? `<div class="prog"><span class="spin"></span><b>${j.pct}%</b><small>pregătesc video-ul</small></div>` : `<div class="prog"><span class="spin"></span><small>poză</small></div>`;
     j.el = d; box.appendChild(d);
   });
 }
@@ -563,14 +603,14 @@ async function onFiles(e) {
 }
 function addVideo(f, ed) {
   const job = jobNou(ed, 'video');
-  if (edit === ed) { drawThumbs(); updFotoBusy(); toast('Fac GIF-ul din video. Între timp poți dicta.', 3500); }
+  if (edit === ed) { drawThumbs(); updFotoBusy(); }
   coadaVideo = coadaVideo.then(async () => {      // unul câte unul: telefonul nu decodează bine mai multe video deodată
     try {
       const r = await videoToGif(f, p => { job.pct = p; const b = job.el && job.el.querySelector('b'); if (b) b.textContent = p + '%'; });
       if (r.taiat) toast(`Video lung: am păstrat primele ${r.sec} secunde.`, 4500);
       ed.poze.push(r.url); cadreGif.set(r.url, r.cadre); pozeVer++;
       if (edit === ed) onFormChange();
-    } catch (err) { toast('Nu am putut face GIF din video: ' + err.message, 5000); }
+    } catch (err) { toast('Nu am putut pregăti video-ul: ' + err.message, 5000); }
     finally { job.termina(); }
   });
 }
@@ -671,7 +711,7 @@ async function saveForm() {
   try {
     const pend = inLucru.filter(j => j.ed === ed);
     if (pend.length) {
-      toast(pend.some(j => j.tip === 'video') ? 'Termin GIF-ul, apoi salvez…' : 'Termin poza, apoi salvez…', 4000);
+      toast(pend.some(j => j.tip === 'video') ? 'Termin video-ul, apoi salvez…' : 'Termin poza, apoi salvez…', 4000);
       await Promise.all(pend.map(j => j.gata));
     }
     if (micOn || rec) { stopMic(true); await asteptMic(); }
@@ -685,12 +725,11 @@ async function saveForm() {
     }
     if (!ed.id) ed.id = genId();
     ed._ts = Date.now();
-    ed.poza = ed.poze[0] || '';
     ed._meta = { ...(ed._meta || {}), exportat: null };   // modificată după export -> se exportă din nou
     try { ed._meta.thumb = ed.poze[0] ? await imgToJpeg(ed.poze[0], 200, 0.7) : ''; } catch (e) { ed._meta.thumb = ''; }
-    try { await dbPut(ed); } catch (err) { toast('Nu am putut salva: ' + err.message, 7000); return; }
+    try { await dbSalveaza(ed, ed.poze); } catch (err) { toast('Nu am putut salva: ' + err.message, 7000); return; }
     edit = null; formDirty = false;
-    inLista(ed);
+    inLista(usoara(ed));
     await dropDraft();
     toast('Salvat');
     inapoiLaApt();
@@ -715,7 +754,7 @@ function micUi() {
 }
 function renderMicInfo() {
   $('micInfo').textContent = (!SR || srOprit) ? 'Pe acest telefon: apasă căsuța de mai jos, apoi microfonul de pe tastatură.'
-    : 'Ex.: „ușa de la baie, tocul zgâriat sus”.';
+    : '';
 }
 const asteptMic = () => rec ? Promise.race([rec.sfarsit, pauza(1500)]) : Promise.resolve();
 async function startMic() {
@@ -903,19 +942,20 @@ function grupat(recs) {
   return g;
 }
 function renderGata() {
-  head('Export', 'Constatări de pe acest telefon');
+  head('Trimite constatările', '');
+  $('lblExpApp').textContent = IOS ? 'Trimite fișierul (WhatsApp, mail, Fișiere)' : 'Salvează fișierul pe telefon';
   const recs = recsExport();
   const g = grupat(recs);
-  $('gxObs').textContent = recs.length;
-  $('gxPoze').textContent = recs.reduce((s, r) => s + (r.poze || []).length, 0);
-  $('gxApt').textContent = g.size;
+  const np = recs.reduce((x, r) => x + (r.nPoze || 0), 0);
+  const pl = (n, a, b) => `${n} ${n === 1 ? a : b}`;
+  $('gxRez').textContent = recs.length ? [pl(recs.length, 'constatare', 'constatări'), pl(g.size, 'loc', 'locuri'), pl(np, 'poză / video', 'poze / video')].join(' · ') : 'Nimic de trimis.';
   let h = '';
-  g.forEach((l, k) => { h += `<div class="grow-row"><span>${esc(k.replace(/ · /g, ' › '))}</span><span class="pill">${l.length}</span></div>`; });
+  g.forEach((l, k) => { const [lo, et, ap] = k.split(' · '); h += `<div class="grow-row"><span><b>${esc(ap)}</b> · ${esc(lo)} · ${esc(et)}</span><span class="pill">${l.length}</span></div>`; });
   $('gataSum').innerHTML = h || '<div class="grow-row muted">Nimic de exportat.</div>';
 }
 $('doarNoi').onchange = renderGata;
 const stamp = () => { const d = new Date(); return `${isoDate(d)}_${pad(d.getHours())}${pad(d.getMinutes())}`; };
-const pentruApp = r => { const o = { ...r }; delete o._meta; return o; };
+const pentruApp = r => { const o = { ...r }; delete o._meta; delete o.nPoze; return o; };
 
 // iPhone: meniul de partajare („Salvează în Fișiere”, WhatsApp, mail). Android / laptop: descărcare directă în Downloads
 // (meniul de partajare de pe Android de obicei nu are „salvează pe telefon”).
@@ -934,7 +974,14 @@ async function shareOrDownload(blob, name) {
 $('btnExpApp').onclick = async () => {
   const recs = recsExport();
   if (!recs.length) { toast('Nimic de exportat.'); return; }
-  const blob = new Blob([JSON.stringify({ observatii: recs.map(pentruApp) })], { type: 'application/json' });
+  toast('Pregătesc fișierul…', 2000);
+  const parti = ['{"observatii":['];
+  for (let i = 0; i < recs.length; i++) {
+    const pz = await dbPoze(recs[i].id).catch(() => []);
+    parti.push(new Blob([(i ? ',' : '') + JSON.stringify(pentruApp({ ...recs[i], poze: pz, poza: pz[0] || '' }))]));
+  }
+  parti.push(']}');
+  const blob = new Blob(parti, { type: 'application/json' });
   const ok = await shareOrDownload(blob, `constatari_${stamp()}_${recs.length}obs.json`);
   if (!ok) return;
   const t = new Date().toISOString();
@@ -947,28 +994,29 @@ $('btnExpCsv').onclick = async () => {
   if (!recs.length) { toast('Nimic de exportat.'); return; }
   const cols = ['Locatie', 'Etaj', 'Apartament', 'Incapere', 'Observatie', 'Specialitate', 'Tip', 'Prioritate', 'Responsabil', 'Data', 'Termen', 'Nr imagini', 'Text dictat', 'Id'];
   const q = v => { const s = String(v ?? ''); return /[;"\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
-  const rows = recs.map(r => [r.locatie, r.etaj, r.apt, r.inc, r.obs, r.spec, r.tip, r.prioritate, (r.resp || []).join(' / '), r.dataObs, r.termen, (r.poze || []).length, r._meta?.dictat || '', r.id].map(q).join(';'));
+  const rows = recs.map(r => [r.locatie, r.etaj, r.apt, r.inc, r.obs, r.spec, r.tip, r.prioritate, (r.resp || []).join(' / '), r.dataObs, r.termen, r.nPoze || 0, r._meta?.dictat || '', r.id].map(q).join(';'));
   const blob = new Blob(['\ufeff' + [cols.join(';')].concat(rows).join('\r\n')], { type: 'text/csv' });
   await shareOrDownload(blob, `constatari_${stamp()}.csv`);
 };
 $('btnExpPdf').onclick = async () => {
   const recs = recsExport();
   if (!recs.length) { toast('Nimic de exportat.'); return; }
+  toast('Pregătesc raportul…', 2000);
   const g = grupat(recs);
   let h = `<h1>Raport constatări</h1><div class="sub">${esc(roDateTime(new Date()))} · ${recs.length} constatări${getUser() ? ' · ' + esc(getUser()) : ''}</div>`;
-  g.forEach((l, k) => {
+  for (const [k, l] of g) {
     h += `<h2>${esc(k)}</h2>`;
     const pe = new Map(); l.forEach(r => { const i = r.inc || '(fără încăpere)'; if (!pe.has(i)) pe.set(i, []); pe.get(i).push(r); });
-    pe.forEach((rs, inc) => {
+    for (const [inc, rs] of pe) {
       h += `<h3>${esc(inc)}:</h3>`;
-      rs.forEach(r => {
+      for (const r of rs) {
+        const pz = r.nPoze ? await dbPoze(r.id).catch(() => []) : [];
         h += `<div class="o"><div>- ${esc(r.obs || '')}</div><div class="m">${esc([r.tip, r.spec, (r.resp || []).join(' / '), r.termen ? 'termen ' + r.termen : ''].filter(Boolean).join(' · '))}</div>`
-          + (r.poze || []).map(p => `<figure><img src="${p}" alt="">${isGif(p) ? '<figcaption>cadru din video (GIF)</figcaption>' : ''}</figure>`).join('') + '</div>';
-      });
-    });
-  });
+          + pz.map(x => `<figure><img src="${x}" alt="">${isGif(x) ? '<figcaption>cadru din video</figcaption>' : ''}</figure>`).join('') + '</div>';
+      }
+    }
+  }
   $('print').innerHTML = h;
-  toast('Pregătesc raportul…', 2000);
   await Promise.all([...$('print').querySelectorAll('img')].map(i => (i.decode ? i.decode() : Promise.resolve()).catch(() => { })));
   window.print();
 };
@@ -990,7 +1038,7 @@ async function renderSetari() {
   verificaAi();
   let spatiu = '';
   try { const e = await navigator.storage.estimate(); spatiu = ` · ~${Math.round(e.usage / 1048576)} MB folosiți`; } catch (e) { }
-  $('infoApp').textContent = `Versiunea ${APP_VER} · ${all.length} constatări pe telefon${spatiu}`;
+  $('infoApp').textContent = `${all.length} constatări pe acest telefon · versiunea ${APP_VER}`;
 }
 $('inUser').onchange = () => {
   const u = $('inUser').value.trim().toUpperCase().replace(/[^A-Z0-9_]/g, '').slice(0, 20);
@@ -1005,7 +1053,7 @@ async function verificaAi() {
     const d = await aiFetch('/user/balance', { method: 'GET' });
     if (seq !== verifSeq) return;
     const b = (d.balance_infos || [])[0];
-    st.textContent = 'pornit pentru toată echipa' + (b ? ` (credit ${b.total_balance} ${b.currency})` : '');
+    st.textContent = 'pornit pentru toată echipa' + (b && Number(b.total_balance) < 1 ? ' (creditul e aproape gata)' : '');
   } catch (e) { if (seq === verifSeq) st.textContent = e.message; }
 }
 
@@ -1045,5 +1093,6 @@ async function verificaAi() {
     if (nav.pos < 0) navReplace('start');            // pornire nouă (de pe ecranul telefonului) = mereu „Unde ești?”
     if (nav.stack[nav.pos] === 'obs' && vineDinLista()) { history.back(); return; }   // formular fără ciornă -> înapoi la apartament
     show(nav.stack[nav.pos]);
+    setTimeout(completeazaMiniaturi, 1500);
   }
 })();

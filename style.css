@@ -1,6 +1,6 @@
 /* Constatări – scris mare, butoane mari, o acțiune clară pe ecran (se folosește din mers, pe șantier) */
 :root {
-  --bg: #f2f4f7; --surface: #fff; --ink: #0f172a; --ink2: #334155; --muted: #5b6475; --faint: #94a3b8;
+  --bg: #f2f4f7; --surface: #fff; --ink: #0f172a; --ink2: #334155; --muted: #475569; --faint: #94a3b8;
   --line: #e2e8f0; --line2: #cbd5e1;
   --pri: #0b5cad; --pri-d: #094a8c; --pri-soft: #e8f1fb;
   --ok: #15803d; --ok-soft: #e7f6ec; --red: #dc2626;
@@ -107,7 +107,8 @@ input.big { font-size: 20px; text-align: left; letter-spacing: 0; }
   border-radius: var(--r); background: var(--pri-soft); border: 2px solid #b9d3ef; color: var(--pri); font-size: 19px; font-weight: 750; cursor: pointer; }
 .mbtn svg { width: 34px; height: 34px; }
 .media.busy .mbtn { opacity: .45; pointer-events: none; }
-.galerie { display: block; margin: 10px 2px 0; color: var(--pri); font-size: 16px; font-weight: 650; cursor: pointer; }
+.galerie { display: flex; align-items: center; gap: 8px; min-height: 48px; margin: 4px 2px 0; color: var(--pri); font-size: 17px; font-weight: 650; cursor: pointer; }
+.galerie svg { width: 22px; height: 22px; }
 .thumbs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 12px; }
 .thumbs:empty { display: none; }
 .thumb { position: relative; aspect-ratio: 1; border-radius: 14px; overflow: hidden; background: #e2e8f0; }
@@ -202,7 +203,22 @@ select.alta { width: 100%; min-height: 52px; margin-top: 12px; padding: 0 14px; 
 button.pick { width: 100%; padding: 14px 0; border: 0; background: transparent; text-align: right; font-size: 17px; color: var(--ink); cursor: pointer;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 button.pick.empty { color: var(--faint); }
-button.alta { text-align: left; cursor: pointer; }
+button.alta { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 52px; margin-top: 12px; border: 1.5px dashed var(--line2); font-size: 17px; text-align: left; cursor: pointer; color: var(--ink2); font-weight: 600;
+  background: var(--surface) no-repeat 14px center / 20px url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2.2' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='M20 20l-3.5-3.5'/%3E%3C/svg%3E");
+  padding-left: 44px; border-radius: 999px; }
+/* rândurile din Detalii arată că se pot apăsa */
+.fc select, button.pick { padding-right: 22px !important; background: no-repeat right center / 18px url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 18l6-6-6-6'/%3E%3C/svg%3E"); }
+.rez { margin: 16px 2px 4px; font-size: 18px; font-weight: 650; }
+.pill.ok { font-size: 14px; color: #166534; background: #dcfce7; }
+/* apartamentul următor: două rânduri, clar */
+#btnAptUrm { flex-direction: column; gap: 0; line-height: 1.15; padding: 0 14px; }
+#btnAptUrm small { font-size: 13px; font-weight: 600; color: var(--muted); }
+#btnAptUrm b { font-size: 18px; }
+/* semnătura, discret */
+.semn { display: flex; flex-direction: column; align-items: center; gap: 4px; margin: 40px 0 4px; color: var(--faint); }
+.semn .v { font: 600 12px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: .12em; }
+.semn a { color: var(--faint); text-decoration: none; font: 500 11.5px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: .14em; text-transform: lowercase; }
+.semn a b { font-weight: 700; background: linear-gradient(90deg, #0b5cad, #6d28d9); -webkit-background-clip: text; background-clip: text; color: transparent; }
 
 /* constatările mele */
 .filtre { margin-top: 14px; }
@@ -218,7 +234,7 @@ button.alta { text-align: left; cursor: pointer; }
 .eroare .eb { width: 100%; max-width: 480px; padding: 22px 18px; border-radius: 18px; background: var(--surface); font-size: 18px; }
 .eroare .msg { color: var(--muted); font-size: 15px; word-break: break-word; }
 
-.toast { position: fixed; left: 50%; bottom: calc(96px + env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 70;
+.toast { position: fixed; left: 50%; top: calc(68px + env(safe-area-inset-top)); transform: translateX(-50%); z-index: 70;
   width: max-content; max-width: min(92vw, 560px); padding: 14px 18px; border-radius: 14px; background: #0f172a; color: #fff; font-size: 17px;
   box-shadow: 0 8px 24px rgba(0,0,0,.2); }
 .print { display: none; }
