@@ -1,12 +1,13 @@
 'use strict';
 /* Constatări – v0.2
-   Poză / video (GIF) + dictare pe teren -> asistentul AI (DeepSeek, opțional) scrie rândul și alege câmpurile
+   Poză / video (GIF) + dictare pe teren -> asistentul AI (DeepSeek) scrie rândul și alege câmpurile.
+   Clădirile / etajele / apartamentele / încăperile / firmele + cheia AI vin în date.bin.json, CRIPTAT cu codul echipei (linkul ?k=…)
    -> fișier compatibil cu „Combina backup-uri” din aplicația de verificări.
    Datele stau pe telefon (IndexedDB). Spre AI (doar când completează) pleacă textul + imaginile constatării
    și câteva rânduri-exemplu din backup-ul importat (ca să scrie în același stil). */
 
-const APP_VER = '0.2.1';
-const LS = { cfg: 'constatari_cfg', user: 'constatari_user', ses: 'constatari_sesiune', ai: 'constatari_ai_cheie', stil: 'constatari_stil' };
+const APP_VER = '0.3.0';
+const LS = { user: 'constatari_user', ses: 'constatari_sesiune', cod: 'constatari_cod', pachet: 'constatari_pachet', pachetCt: 'constatari_pachet_ct' };
 const DEF = {
   locatii: [], etaje: {}, apartamente: {},
   camere: ['Baie', 'Bucatarie', 'Living', 'Dormitor', 'Hol intrare', 'Hol interior', 'Balcon'],
@@ -31,19 +32,33 @@ const isGif = p => String(p).startsWith('data:image/gif');
 const pauza = ms => new Promise(r => setTimeout(r, ms));
 
 /* ---------------- stocare ---------------- */
-function loadCfg() {
-  try { const c = JSON.parse(localStorage.getItem(LS.cfg) || 'null'); if (c && Array.isArray(c.locatii)) return { ...DEF, ...c, _importat: true }; } catch (e) { }
-  return { ...DEF, _importat: false };
+let PACHET = null, cfg = { ...DEF };
+function aplicaPachet(pk) { PACHET = pk; cfg = { ...DEF, ...(pk.cfg || {}) }; }
+const normCod = x => String(x || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+const b64 = x => Uint8Array.from(atob(x), c => c.charCodeAt(0));
+async function decripteaza(cod, bin) {
+  const baza = await crypto.subtle.importKey('raw', new TextEncoder().encode(cod), 'PBKDF2', false, ['deriveKey']);
+  const k = await crypto.subtle.deriveKey({ name: 'PBKDF2', salt: b64(bin.salt), iterations: bin.it, hash: 'SHA-256' }, baza, { name: 'AES-GCM', length: 256 }, false, ['decrypt']);
+  const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64(bin.iv) }, k, b64(bin.ct));
+  return JSON.parse(new TextDecoder().decode(pt));
 }
-let cfg = loadCfg();
+// aduce date.bin.json; dacă s-a schimbat (sau nu am nimic), îl decriptează cu codul echipei. Codul greșit -> eroare.
+async function incarcaDate(cod, fortat) {
+  const r = await fetch('date.bin.json', { cache: 'no-cache' });
+  if (!r.ok) throw new Error('nu găsesc datele');
+  const bin = await r.json();
+  const sem = bin.ct.slice(0, 64);
+  if (!fortat && PACHET && localStorage.getItem(LS.pachetCt) === sem) return false;
+  const pk = await decripteaza(cod, bin);
+  localStorage.setItem(LS.cod, cod); localStorage.setItem(LS.pachet, JSON.stringify(pk)); localStorage.setItem(LS.pachetCt, sem);
+  aplicaPachet(pk);
+  return true;
+}
 let ses = { locatie: '', etaj: '', apt: '', spec: '', tip: 'Neconformitate', prioritate: 'Normal', resp: [], termenZile: 3 };
 try { Object.assign(ses, JSON.parse(localStorage.getItem(LS.ses) || '{}')); } catch (e) { }
 const saveSes = () => localStorage.setItem(LS.ses, JSON.stringify(ses));
 const getUser = () => (localStorage.getItem(LS.user) || '').trim();
-function stil() {
-  try { const s = JSON.parse(localStorage.getItem(LS.stil) || 'null'); if (s && Array.isArray(s.exemple)) return s; } catch (e) { }
-  return { exemple: [], respPeSpec: {} };
-}
+function stil() { return (PACHET && PACHET.stil) || { exemple: [], respPeSpec: {} }; }
 
 let _db;
 function db() {
@@ -185,6 +200,8 @@ function camerePt(loc, etaj, apt) {
     if (k && ca[k].length) return ca[k];
   }
   if (ca[pref + apt] && ca[pref + apt].length) return ca[pref + apt];
+  const kz = Object.keys(ca).find(k => k.startsWith(pref + apt));   // ex. „Casa de scara” -> „Casa de scara A”
+  if (kz && ca[kz].length) return ca[kz];
   const comune = (cfg.camere || []).filter(c => CAMERE_COMUNE.test(c)).slice(0, 14);
   return comune.length ? comune : DEF.camere;
 }
@@ -192,7 +209,7 @@ const toateCamerele = ed => [...new Set([...camerePt(ed.locatie, ed.etaj, ed.apt
 function urmApt() { const l = aptPt(ses.locatie, ses.etaj); const i = l.indexOf(ses.apt); return i >= 0 && i < l.length - 1 ? l[i + 1] : ''; }
 
 /* ---------------- navigare (butonul Înapoi al telefonului merge ca în aplicație) ---------------- */
-const VIEWS = { start: 'vStart', apt: 'vApt', obs: 'vObs', gata: 'vGata', setari: 'vSetari' };
+const VIEWS = { start: 'vStart', apt: 'vApt', obs: 'vObs', gata: 'vGata', setari: 'vSetari', lock: 'vLock' };
 let curView = null;
 let formDirty = false;
 // istoricul nostru: fiecare intrare știe la ce adâncime e (d), așa că Înapoi / Înainte / reîncărcarea rămân corecte
@@ -233,83 +250,80 @@ function intreabaIesire(dupaAruncare) {
   sh.onclick = e => { if (e.target === sh) inchide(); };
 }
 function show(v) {
-  if (!VIEWS[v]) v = 'start';
+  if (!PACHET) v = 'lock'; else if (!VIEWS[v] || v === 'lock') v = 'start';
   if (v === 'obs' && !edit) v = ses.apt ? 'apt' : 'start';
   if (v === 'apt' && !ses.apt) v = 'start';
   if (location.hash !== '#' + v || !history.state || history.state.d !== nav.pos) navReplace(v);
   curView = v;
   Object.entries(VIEWS).forEach(([k, id]) => { $(id).hidden = k !== v; });
-  $('btnBack').hidden = v === 'start';
-  $('btnSetari').hidden = v === 'setari' || v === 'obs';
+  $('btnBack').hidden = v === 'start' || v === 'lock';
+  $('btnSetari').hidden = v === 'setari' || v === 'obs' || v === 'lock';
   if (v !== 'obs') stopMic(true);
-  ({ start: renderStart, apt: renderApt, obs: renderObs, gata: renderGata, setari: renderSetari })[v]();
+  ({ start: renderStart, apt: renderApt, obs: renderObs, gata: renderGata, setari: renderSetari, lock: renderLock })[v]();
   window.scrollTo(0, 0);
 }
 $('btnBack').onclick = () => nav.pos > 0 ? history.back() : go(parinte(curView), true);
 $('btnSetari').onclick = () => go('setari');
 
-/* ---------------- START ---------------- */
+/* ---------------- BLOCAT (fără codul echipei) ---------------- */
+function renderLock() { head('Constatări', ''); }
+$('btnCod').onclick = async () => {
+  const cod = normCod($('inCod').value);
+  $('lockErr').hidden = true;
+  if (!cod) { $('inCod').focus(); return; }
+  $('btnCod').disabled = true;
+  try { await incarcaDate(cod, true); toast('Gata, aplicația e pregătită.'); go('start', true); }
+  catch (e) { $('lockErr').textContent = e.name === 'OperationError' ? 'Codul nu e bun.' : 'Nu am internet. Încearcă din nou.'; $('lockErr').hidden = false; }
+  finally { $('btnCod').disabled = false; }
+};
+
+/* ---------------- START: unde ești (corp -> etaj -> apartament, din butoane mari) ---------------- */
 const IOS = /iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 const standalone = () => navigator.standalone === true || (window.matchMedia && matchMedia('(display-mode: standalone)').matches);
-let respStart;
+let alegere = { loc: '', etaj: '' };
+const eLocuinte = loc => /^L\d/i.test(loc);
+const scurtEtaj = e => e === 'Parter' ? 'P' : String(e).replace(/^Etaj\s+/i, '');
+function placa(text, on, onclick, sub) {
+  const b = document.createElement('button'); b.type = 'button'; b.className = 'tile-b' + (on ? ' on' : '');
+  b.innerHTML = esc(text) + (sub ? `<span class="n">${esc(sub)}</span>` : ''); b.onclick = onclick; return b;
+}
+const laVedere = id => setTimeout(() => { const e = $(id); if (e && !e.hidden) e.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 60);
+function nrPe(loc, etaj, apt) {
+  const n = all.filter(r => r.locatie === loc && (etaj == null || r.etaj === etaj) && (apt == null || r.apt === apt)).length;
+  return n ? String(n) : '';
+}
 function renderStart() {
   head('Constatări', 'Inspecții pe teren');
-  $('cfgWarn').hidden = cfg._importat;
-  const loc = field('fLocatie', cfg.locatii, ses.locatie, 'alege');
-  const drawEtaj = () => {
-    const et = field('fEtaj', etajePt(val('fLocatie')), ses.etaj, 'alege');
-    const drawApt = () => {
-      const ap = field('fApt', aptPt(val('fLocatie'), val('fEtaj')), ses.apt, 'alege');
-      ap.addEventListener('change', updIncepe); ap.addEventListener('input', updIncepe);
-      field('fSpec', specPt(val('fLocatie'), val('fEtaj')), ses.spec, 'oricare', () => { ses.specAles = true; updDefSum(); });
-      updIncepe();
-    };
-    et.addEventListener('change', () => {          // fără liste (câmpuri scrise de mână) nu refac câmpul următor: s-ar închide tastatura
-      ses.etaj = val('fEtaj');
-      if (aptPt(val('fLocatie'), ses.etaj).length || eSelect('fApt')) { ses.apt = ''; drawApt(); } else updIncepe();
-    });
-    drawApt();
-  };
-  loc.addEventListener('change', () => {
-    ses.locatie = val('fLocatie');
-    if (etajePt(ses.locatie).length || eSelect('fEtaj')) { ses.etaj = ''; ses.apt = ''; drawEtaj(); }
-  });
-  drawEtaj();
-  field('fTip', cfg.tipuri, ses.tip, 'alege', () => { ses.tipAles = true; updDefSum(); });
-  field('fPrio', cfg.prioritati, ses.prioritate, 'alege', updDefSum);
-  respStart = makeChips('fResp', cfg.responsabili || [], ses.resp, true, updDefSum);
-  $('fTermenZile').value = ses.termenZile ?? 3;
-  const neexp = all.filter(r => !r._meta?.exportat).length;
-  $('stTotal').textContent = all.length; $('stNoi').textContent = neexp;
-  $('aiStart').hidden = aiOn();
   $('iosWarn').hidden = !(IOS && !standalone());
-  updDefSum();
+  const cont = !!ses.apt && aptPt(ses.locatie, ses.etaj).includes(ses.apt);
+  $('btnContinua').hidden = !cont;
+  if (cont) { $('contApt').textContent = ses.apt; $('contLoc').textContent = `${ses.locatie} · ${ses.etaj}`; }
+  if (!alegere.loc && ses.locatie) alegere = { loc: ses.locatie, etaj: ses.etaj };
+  drawLoc();
+  const neexp = all.filter(r => !r._meta?.exportat).length;
+  $('stNoi').textContent = neexp ? String(neexp) : '';
 }
-const eSelect = id => !!$(id).firstElementChild && $(id).firstElementChild.tagName === 'SELECT';
-function updIncepe() { const a = val('fApt'); $('btnIncepe').textContent = a ? `Începe la ${a}` : 'Începe verificarea'; }
-function updDefSum() {
-  const r = respStart ? respStart.get() : ses.resp;
-  const z = $('fTermenZile').value;
-  $('defSum').textContent = [(r || []).join(' / '), val('fTip'), val('fSpec'), z !== '' ? `termen ${z} zile` : ''].filter(Boolean).join(' · ');
+function drawLoc() {
+  const g = $('gLoc'); g.innerHTML = '';
+  (cfg.locatii || []).forEach(l => g.appendChild(placa(l, l === alegere.loc, () => {
+    alegere = { loc: l, etaj: '' }; drawLoc(); laVedere(etajePt(l).length > 1 ? 'blocEtaj' : 'blocApt');
+  })));
+  const et = alegere.loc ? etajePt(alegere.loc) : [];
+  if (et.length === 1) alegere.etaj = et[0];                 // Exterior / Învelitoare: un singur „etaj” -> nu mai întreb
+  $('blocEtaj').hidden = et.length <= 1;
+  const ge = $('gEtaj'); ge.innerHTML = '';
+  et.forEach(e => ge.appendChild(placa(scurtEtaj(e), e === alegere.etaj, () => { alegere.etaj = e; drawLoc(); laVedere('blocApt'); })));
+  const ap = alegere.loc && alegere.etaj ? aptPt(alegere.loc, alegere.etaj) : [];
+  $('blocApt').hidden = !ap.length;
+  $('lblApt').innerHTML = `<span class="nr">${et.length > 1 ? 3 : 2}</span>${eLocuinte(alegere.loc) ? 'Apartamentul' : 'Zona'}`;
+  const ga = $('gApt'); ga.innerHTML = '';
+  ga.className = ap.every(a => String(a).length <= 7) ? 'tiles small' : 'tiles';
+  ap.forEach(a => ga.appendChild(placa(a, false, () => {
+    ses.locatie = alegere.loc; ses.etaj = alegere.etaj; ses.apt = a; saveSes(); go('apt');
+  }, nrPe(alegere.loc, alegere.etaj, a))));
 }
-$('fTermenZile').addEventListener('input', updDefSum);
-function readStart() {
-  ses.locatie = val('fLocatie'); ses.etaj = val('fEtaj'); ses.apt = val('fApt');
-  ses.spec = val('fSpec'); ses.tip = val('fTip'); ses.prioritate = val('fPrio');
-  ses.resp = respStart ? respStart.get() : ses.resp;
-  const zv = $('fTermenZile').value.trim(), z = Number(zv);
-  ses.termenZile = zv !== '' && Number.isFinite(z) && z >= 0 ? Math.min(Math.round(z), 365) : 3;   // gol = 3 zile, nu „azi”
-  $('fTermenZile').value = ses.termenZile;
-  saveSes();
-}
-$('btnIncepe').onclick = () => {
-  readStart();
-  if (!ses.locatie || !ses.etaj || !ses.apt) { toast('Alege locația, etajul și apartamentul.'); return; }
-  go('apt');
-};
-$('btnLaGata').onclick = () => { readStart(); go('gata'); };
-$('lnkSetari').onclick = e => { e.preventDefault(); go('setari'); };
-$('lnkSetariAi').onclick = e => { e.preventDefault(); go('setari'); };
+$('btnContinua').onclick = () => go('apt');
+$('btnLaGata').onclick = () => go('gata');
 
 /* ---------------- APARTAMENT ---------------- */
 function recsApt() { return all.filter(r => r.locatie === ses.locatie && r.etaj === ses.etaj && r.apt === ses.apt); }
@@ -318,15 +332,13 @@ function itemHtml(r) {
   const src = (r._meta && r._meta.thumb) || p[0];
   const img = n ? `<span class="phw"><img class="ph" src="${src}" alt="" loading="lazy">${isGif(p[0]) ? '<span class="badge">GIF</span>' : ''}</span>` : `<div class="ph">${icon('note')}</div>`;
   const meta = [r.tip, r.spec, (r.resp || []).join(' / '), n ? `${n} ${n === 1 ? 'imagine' : 'imagini'}` : ''].filter(Boolean).map(esc).join('<span>·</span>');
-  const exp = r._meta?.exportat ? ' <span class="pill ok">exportat</span>' : '';
+  const exp = r._meta?.exportat ? ' <span class="pill ok">trimisă</span>' : '';
   return `${img}<div class="body"><div class="room">${esc(r.inc || 'Fără încăpere')}</div>
     <div class="d">${esc(r.obs || '(fără descriere)')}</div><div class="m">${meta}${exp}</div></div>`;
 }
 function renderApt() {
-  head(ses.apt, `${ses.locatie} › ${ses.etaj}`);
+  head(ses.apt, `${ses.locatie} · ${ses.etaj}`);
   const list = recsApt();
-  $('aptCount').textContent = `${list.length} ${list.length === 1 ? 'constatare' : 'constatări'}`;
-  $('aptCount').hidden = !list.length;
   $('aptEmpty').hidden = !!list.length;
   const box = $('aptList'); box.innerHTML = '';
   list.slice().reverse().forEach(r => {
@@ -339,7 +351,6 @@ function renderApt() {
   $('btnAptUrm').setAttribute('aria-label', 'Apartamentul următor: ' + u);
 }
 $('btnNou').onclick = () => openObs(null);
-$('btnGata').onclick = () => go('gata');
 $('btnAptUrm').onclick = () => {
   const u = urmApt(); if (!u) return;
   ses.apt = u; saveSes(); renderApt(); window.scrollTo(0, 0); toast('Acum: ' + u);
@@ -380,7 +391,7 @@ function openObs(rec) {
   go('obs');
 }
 function renderObs() {
-  head(edit.id ? 'Editare constatare' : 'Constatare nouă', `${edit.locatie} › ${edit.etaj} › ${edit.apt}`);
+  head(edit.id ? 'Editare constatare' : 'Constatare nouă', `${edit.apt} · ${edit.locatie} · ${edit.etaj}`);
   drawThumbs();
   const cam = camerePt(edit.locatie, edit.etaj, edit.apt);
   const sel = edit.inc ? edit.inc.split(',').map(s => s.trim()).filter(Boolean) : [];
@@ -616,12 +627,11 @@ let rec = null, micOn = false, micBase = '', aiDupaMic = false, micIdleT = null,
 function micActiv() { clearTimeout(micIdleT); if (micOn) micIdleT = setTimeout(() => { if (micOn) { stopMic(false); toast('Am oprit microfonul (nu am mai auzit nimic).', 3500); } }, 25000); }
 function micUi() {
   const b = $('btnMic'); b.classList.toggle('on', micOn);
-  b.innerHTML = micOn ? `${icon('stop')}<span>Gata, am terminat</span>` : `${icon('mic')}<span>Dictează</span>`;
+  b.innerHTML = micOn ? `${icon('stop')}<span>Am terminat</span>` : `${icon('mic')}<span>Apasă și vorbește</span>`;
 }
 function renderMicInfo() {
-  $('micInfo').textContent = (!SR || srOprit) ? 'Pe acest telefon: apasă microfonul de pe tastatură și vorbește.'
-    : aiOn() ? 'Ex.: „ușa de la baie, tocul zgâriat sus”. Aplicația scrie rândul și alege încăperea.'
-      : 'Ex.: „ușa de la baie, tocul zgâriat sus”.';
+  $('micInfo').textContent = (!SR || srOprit) ? 'Pe acest telefon: apasă căsuța de mai jos, apoi microfonul de pe tastatură.'
+    : 'Ex.: „ușa de la baie, tocul zgâriat sus”. Aplicația scrie rândul și completează restul.';
 }
 const asteptMic = () => rec ? Promise.race([rec.sfarsit, pauza(1500)]) : Promise.resolve();
 async function startMic() {
@@ -680,7 +690,7 @@ $('btnMic').onclick = () => micOn ? stopMic(false) : startMic();
 
 /* ---------------- ASISTENT AI (DeepSeek) ---------------- */
 const AI = { url: 'https://api.deepseek.com', model: 'deepseek-flash', timeout: 35000 };
-const aiKey = () => (localStorage.getItem(LS.ai) || '').trim();
+const aiKey = () => (PACHET && PACHET.ai && PACHET.ai.key) || '';
 const aiOn = () => !!aiKey();
 const PROMPT = `Esti asistentul unui inginer care verifica apartamente noi inainte de predare, pe un santier de blocuri de locuinte.
 Primesti: textul dictat de inginer (recunoastere vocala automata, poate avea cuvinte gresite), 0-4 imagini (poze sau cadre dintr-un video) si listele aplicatiei.
@@ -935,15 +945,12 @@ $('btnStergeExp').onclick = async () => {
 async function renderSetari() {
   head('Setări');
   $('inUser').value = getUser();
-  const st = stil();
-  $('cfgInfo').textContent = cfg._importat
-    ? `${cfg.locatii.length} locații · ${Object.keys(cfg.apartamente || {}).length} etaje · ${(cfg.camere || []).length} încăperi · ${(cfg.responsabili || []).length} firme${st.exemple.length ? ` · ${st.exemple.length} exemple de stil` : ''}`
-    : 'Nicio listă importată';
-  $('inAiKey').value = aiKey();
+  const nApt = Object.entries(cfg.apartamente || {}).filter(([k]) => eLocuinte(k)).reduce((a, [, v]) => a + v.length, 0);
+  $('cfgInfo').textContent = `${(cfg.locatii || []).length} clădiri și zone, ${nApt} apartamente, ${(cfg.responsabili || []).length} firme (din aplicația de verificări)`;
   verificaAi();
   let spatiu = '';
-  try { const e = await navigator.storage.estimate(); spatiu = ` · spațiu folosit ~${Math.round(e.usage / 1048576)} MB`; } catch (e) { }
-  $('infoApp').textContent = `Constatări v${APP_VER} · ${all.length} constatări pe telefon${spatiu}`;
+  try { const e = await navigator.storage.estimate(); spatiu = ` · ~${Math.round(e.usage / 1048576)} MB folosiți`; } catch (e) { }
+  $('infoApp').textContent = `Versiunea ${APP_VER} · ${all.length} constatări pe telefon${spatiu}`;
 }
 $('inUser').onchange = () => {
   const u = $('inUser').value.trim().toUpperCase().replace(/[^A-Z0-9_]/g, '').slice(0, 20);
@@ -952,61 +959,30 @@ $('inUser').onchange = () => {
 let verifSeq = 0;
 async function verificaAi() {
   const st = $('aiStare'), seq = ++verifSeq;
-  st.className = 'fc muted';
-  if (!aiOn()) { st.textContent = 'Oprit (fără cheie)'; return; }
-  st.textContent = 'Verific…';
+  if (!aiOn()) { st.textContent = 'oprit'; return; }
+  st.textContent = 'verific…';
   try {
     const d = await aiFetch('/user/balance', { method: 'GET' });
     if (seq !== verifSeq) return;
     const b = (d.balance_infos || [])[0];
-    st.textContent = 'Pornit' + (b ? ` · credit ${b.total_balance} ${b.currency}` : ''); st.className = 'fc ok';
-  } catch (e) { if (seq === verifSeq) { st.textContent = e.message; st.className = 'fc err'; } }
+    st.textContent = 'pornit pentru toată echipa' + (b ? ` (credit ${b.total_balance} ${b.currency})` : '');
+  } catch (e) { if (seq === verifSeq) st.textContent = e.message; }
 }
-$('inAiKey').onchange = () => {
-  const k = $('inAiKey').value.trim().replace(/\s+/g, '');
-  if (k) localStorage.setItem(LS.ai, k); else localStorage.removeItem(LS.ai);
-  $('inAiKey').value = k;
-  verificaAi();
-};
-function construiesteStil(obs) {
-  const lista = (Array.isArray(obs) ? obs : []).filter(o => o && typeof o.obs === 'string');
-  const bune = lista.filter(o => o.obs.trim().length >= 8 && o.obs.trim().length <= 110).sort((a, b) => (b._ts || 0) - (a._ts || 0));
-  const vazut = new Set(), peSpec = {}, exemple = [];
-  for (const o of bune) {
-    const k = cheie(o.obs); if (vazut.has(k)) continue;
-    const s = o.spec || '-'; if ((peSpec[s] = (peSpec[s] || 0) + 1) > 6) continue;
-    vazut.add(k); exemple.push(`${o.obs.trim()} [${[o.inc, o.spec, o.tip].filter(Boolean).join(' / ')}]`);
-    if (exemple.length >= 40) break;
-  }
-  const num = {};
-  lista.forEach(o => {
-    if (!o.spec || !Array.isArray(o.resp) || !o.resp.length) return;
-    const v = o.resp.join('|');
-    [`${o.locatie}|${o.spec}`, o.spec].forEach(k => { num[k] = num[k] || {}; num[k][v] = (num[k][v] || 0) + 1; });
-  });
-  const respPeSpec = {};
-  Object.entries(num).forEach(([k, m]) => { const [v] = Object.entries(m).sort((a, b) => b[1] - a[1])[0]; respPeSpec[k] = v.split('|'); });
-  return { exemple, respPeSpec };
-}
-$('inCfg').onchange = async e => {
-  const f = e.target.files && e.target.files[0]; e.target.value = '';
-  if (!f) return;
-  try {
-    const p = JSON.parse(await f.text());
-    if (!p || !Array.isArray(p.locatii)) throw new Error('fișierul nu are lista de locații');
-    const c = {}; CFG_KEYS.forEach(k => { if (p[k] !== undefined) c[k] = p[k]; });
-    localStorage.setItem(LS.cfg, JSON.stringify(c));
-    if (Array.isArray(p.observatii) && p.observatii.length) localStorage.setItem(LS.stil, JSON.stringify(construiesteStil(p.observatii)));
-    cfg = loadCfg();
-    toast('Liste importate', 3000); show(curView);
-  } catch (err) { toast('Nu am putut importa: ' + err.message, 5000); }
-};
 
 /* ---------------- pornire ---------------- */
 (async function init() {
   try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) { }
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => { });
   try { await reload(); } catch (e) { toast('Nu pot citi memoria telefonului: ' + e.message, 6000); }
+  // codul echipei: din link (?k=…) sau de pe telefon. Datele decriptate se țin pe telefon; se reîmprospătează când se schimbă.
+  const codUrl = normCod(new URLSearchParams(location.search).get('k'));
+  const cod = codUrl || localStorage.getItem(LS.cod) || '';
+  try { const pk = JSON.parse(localStorage.getItem(LS.pachet) || 'null'); if (pk && pk.cfg && (!codUrl || codUrl === localStorage.getItem(LS.cod))) aplicaPachet(pk); } catch (e) { }
+  if (cod) {
+    if (PACHET) incarcaDate(cod).then(nou => { if (nou && curView === 'start') renderStart(); }).catch(() => { });
+    else { try { await incarcaDate(cod, true); } catch (e) { $('lockErr').textContent = e.name === 'OperationError' ? 'Codul din link nu e bun.' : 'Prima dată ai nevoie de internet.'; $('lockErr').hidden = false; } }
+  }
+  if (!PACHET) { nav = { stack: [], pos: -1 }; navReplace('lock'); show('lock'); return; }
   // după reîncărcare (ex. telefonul a închis pagina cât era deschisă camera) refac istoricul de unde era
   try {
     const s = JSON.parse(sessionStorage.getItem('constatari_nav') || 'null'), st = history.state;
@@ -1026,7 +1002,7 @@ $('inCfg').onchange = async e => {
     toast('Am recuperat constatarea începută.', 3500);
   } else {
     if (d) dropDraft();
-    if (nav.pos < 0) navReplace(hashView());
+    if (nav.pos < 0) navReplace('start');            // pornire nouă (de pe ecranul telefonului) = mereu „Unde ești?”
     if (nav.stack[nav.pos] === 'obs' && prevView() === 'apt') { history.back(); return; }   // formular fără ciornă -> înapoi la apartament
     show(nav.stack[nav.pos]);
   }
