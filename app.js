@@ -6,7 +6,7 @@
    Datele stau pe telefon (IndexedDB). Spre AI (doar când completează) pleacă textul + imaginile constatării
    și câteva rânduri-exemplu din backup-ul importat (ca să scrie în același stil). */
 
-const APP_VER = '0.5.3';
+const APP_VER = '0.5.4';
 // pagină veche (din cache) + cod nou -> nu pornesc pe jumătate: șterg memoria veche și redeschid curat
 if (document.documentElement.getAttribute('data-ver') !== APP_VER) {
   (window.reparaAplicatia || function () {
@@ -421,6 +421,7 @@ $('meleCauta').addEventListener('input', () => renderMele());
 
 /* ---------------- CONSTATĂRILE MELE: tot ce e pe telefon, grupat pe apartamente ---------------- */
 let filtruMele = 'toate';
+const meleDeschise = new Set();
 function renderMele() {
   head('Constatările mele', `${all.length} pe acest telefon`);
   const k = cheie($('meleCauta').value);
@@ -430,15 +431,25 @@ function renderMele() {
   const grupe = new Map();
   recs.forEach(r => { const k = `${r.locatie}|${r.etaj}|${r.apt}`; if (!grupe.has(k)) grupe.set(k, []); grupe.get(k).push(r); });
   const box = $('meleList'); box.innerHTML = '';
-  grupe.forEach(l => {
+  grupe.forEach((l, gk) => {
     const r0 = l[0];
-    const h = document.createElement('button'); h.type = 'button'; h.className = 'grup';
+    const deschis = !!k || grupe.size === 1 || meleDeschise.has(gk);
+    const h = document.createElement('button'); h.type = 'button'; h.className = 'grup' + (deschis ? ' on' : '');
     h.innerHTML = `<b>${esc(r0.apt)}</b><span class="gl">${esc(r0.locatie)} · ${esc(r0.etaj)}</span><span class="pill">${l.length}</span>${icon('next')}`;
-    h.setAttribute('aria-label', `Deschide ${r0.apt}`);
-    h.onclick = () => { ses.locatie = r0.locatie; ses.etaj = r0.etaj; ses.apt = r0.apt; saveSes(); go('apt'); };
-    const lst = document.createElement('div'); lst.className = 'list';
-    l.forEach(r => { const d = document.createElement('button'); d.type = 'button'; d.className = 'item'; d.innerHTML = itemHtml(r); d.onclick = () => openObs(r); lst.appendChild(d); });
-    box.appendChild(h); box.appendChild(lst);
+    h.setAttribute('aria-expanded', deschis ? 'true' : 'false');
+    h.onclick = () => { if (meleDeschise.has(gk)) meleDeschise.delete(gk); else meleDeschise.add(gk); renderMele(); };
+    box.appendChild(h);
+    if (!deschis) return;
+    const lst = document.createElement('div'); lst.className = 'mlist';
+    l.forEach(r => {
+      const d = document.createElement('button'); d.type = 'button'; d.className = 'item mi';
+      d.innerHTML = `<div class="body"><div class="d">${esc(r.obs || '(fără descriere)')}</div><div class="room">${esc(r.inc || 'Fără încăpere')}</div></div>${icon('next')}`;
+      d.onclick = () => openObs(r); lst.appendChild(d);
+    });
+    const a = document.createElement('button'); a.type = 'button'; a.className = 'linkbtn mapt';
+    a.innerHTML = `${icon('next')}Deschide ${esc(r0.apt)}`;
+    a.onclick = () => { ses.locatie = r0.locatie; ses.etaj = r0.etaj; ses.apt = r0.apt; saveSes(); go('apt'); };
+    lst.appendChild(a); box.appendChild(lst);
   });
   document.querySelectorAll('#vMele .filtre .chip').forEach(b => {
     b.classList.toggle('on', b.dataset.f === filtruMele);
@@ -1221,51 +1232,17 @@ $('btnExpCsv').onclick = unaCateUna(async () => {
   const blob = new Blob(['\ufeff' + [cols.join(';')].concat(rows).join('\r\n')], { type: 'text/csv' });
   await shareOrDownload(blob, `constatari_${stamp()}.csv`);
 });
-// raportul: textul din „Spune ce e” rămâne EXACT cum l-a scris omul (utilizatorul, 24.11); AI-ul scrie doar rezumatul
-const PROMPT_REZUMAT = `Primesti lista constatarilor dintr-o verificare de apartamente (santier). Scrii in limba romana CU diacritice, sobru, doar ce reiese din lista:
-Textele sunt scrise in graba, prescurtat. NU le reinterpretezi: folosesti cuvintele lor. Ex.: "Reparatii glet nefinalizat" = stadiul reparatiilor la glet este nefinalizat (NU "glet nefinalizat");
-"Reparatii nefinalizate decorativa" = reparatiile la decorativa sunt nefinalizate; "de reglat" = trebuie reglat (NU "dereglat"). Cand nu e clar, scrii aproape identic cu textul.
-- "pe_scurt": 3-6 puncte scurte: problemele principale si cele care se repeta (in ce apartamente), pe firme daca reiese.
-Raspunzi DOAR cu JSON: {"pe_scurt":["..."]}`;
-function jsonObj(x) {
-  if (typeof x !== 'string') return null;
-  try { return JSON.parse(x); } catch (e) { }
-  const m = x.match(/\{[\s\S]*\}/); if (m) { try { return JSON.parse(m[0]); } catch (e) { } }
-  return null;
-}
-async function cerereAi(prompt, date, ms) {
-  const d = await aiFetch('/chat/completions', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model: AI.model, temperature: 0.2, response_format: { type: 'json_object' }, thinking: { type: 'disabled' }, max_tokens: 6000,
-      messages: [{ role: 'system', content: prompt }, { role: 'user', content: JSON.stringify(date) }] })
-  }, ms);
-  const o = jsonObj(d.choices && d.choices[0] && d.choices[0].message && d.choices[0].message.content);
-  if (!o) throw new Error('răspuns neclar');
-  return o;
-}
-const cheieAp = r => `${r.apt} · ${r.locatie} · ${r.etaj}`;
-async function aiRaport(recs, prog) {
-  prog('Scriu rezumatul…');
-  const o2 = await cerereAi(PROMPT_REZUMAT, recs.map(r => ({ ap: cheieAp(r), incapere: r.inc, text: r.obs || '', specialitate: r.spec, firma: (r.resp || []).join(', ') })), 90000);
-  return { peScurt: Array.isArray(o2.pe_scurt) ? o2.pe_scurt.filter(x => typeof x === 'string') : [] };
-}
+// raportul (utilizatorul, 24.11): textele EXACT cum au fost scrise, fără nume, fără rezumat, fără subsol; tabel doar Loc + Constatări
 $('btnExpPdf').onclick = unaCateUna(async () => {
   const recs = recsExport();
   if (!recs.length) { toast('Nimic de trimis'); return; }
-  const prog = m => toast(m, 120000);
-  let ai = null;
-  if (aiOn()) { try { ai = await aiRaport(recs, prog); } catch (e) { toast('Fără AI: ' + e.message, 2500); await pauza(800); } }
-  prog('Pun pozele…');
+  toast('Pregătesc raportul…', 120000);
   const g = grupat(recs);
   const nPoze = recs.reduce((x, r) => x + (r.nPoze || 0), 0);
   const pl = (n, a, b) => `${n} ${n === 1 ? a : b}`;
-  let h = `<div class="rh"><div class="rt">Raport constatări</div><div class="rs">${esc(roDateTime(new Date()))}${getUser() ? ' · ' + esc(getUser()) : ''} · ${pl(recs.length, 'constatare', 'constatări')} · ${pl(g.size, 'loc', 'locuri')} · ${pl(nPoze, 'poză', 'poze')}</div></div>`;
-  if (ai && ai.peScurt.length) h += `<section class="pescurt"><h2>Pe scurt</h2><ul>${ai.peScurt.map(x => `<li>${esc(x)}</li>`).join('')}</ul></section>`;
-  h += `<table class="rtab"><thead><tr><th>Loc</th><th>Constatări</th><th>Firme</th></tr></thead><tbody>`;
-  for (const [, l] of g) {
-    const firme = [...new Set(l.flatMap(r => r.resp || []))];
-    h += `<tr><td><b>${esc(l[0].apt)}</b> · ${esc(l[0].locatie)} · ${esc(l[0].etaj)}</td><td class="n">${l.length}</td><td>${esc(firme.join(', ') || '-')}</td></tr>`;
-  }
+  let h = `<div class="rh"><div class="rt">Raport constatări</div><div class="rs">${esc(roDateTime(new Date()))} · ${pl(recs.length, 'constatare', 'constatări')} · ${pl(g.size, 'loc', 'locuri')} · ${pl(nPoze, 'poză', 'poze')}</div></div>`;
+  h += `<table class="rtab"><thead><tr><th>Loc</th><th class="n">Constatări</th></tr></thead><tbody>`;
+  for (const [, l] of g) h += `<tr><td><b>${esc(l[0].apt)}</b> · ${esc(l[0].locatie)} · ${esc(l[0].etaj)}</td><td class="n">${l.length}</td></tr>`;
   h += `</tbody></table>`;
   let nr = 0;
   for (const [, l] of g) {
@@ -1282,14 +1259,13 @@ $('btnExpPdf').onclick = unaCateUna(async () => {
         let fig = '';
         for (const x of pz) { let m = ''; try { m = await imgToJpeg(x, 720, 0.72, !isGif(x)); } catch (e) { continue; } fig += `<figure><img src="${m}" alt="">${isGif(x) ? '<figcaption>cadru din video</figcaption>' : ''}</figure>`; }
         const meta = [r.tip, r.spec, (r.resp || []).join(', '), r.termen ? 'termen ' + r.termen.split('-').reverse().join('.') : ''].filter(Boolean).join(' · ');
-        const fh = `<div class="o${fig ? ' cu' : ''}"><div class="oc"><div class="ot"><span class="nr">${nr}.</span>${esc(text)}</div>${meta ? `<div class="m">${esc(meta)}</div>` : ''}</div>${fig ? `<div class="ph">${fig}</div>` : ''}</div>`;
+        const fh = `<div class="o${fig ? ' cu' : ''}" data-id="${esc(r.id)}"><div class="oc"><div class="ot"><span class="nr">${nr}.</span>${esc(text)}</div>${meta ? `<div class="m">${esc(meta)}</div>` : ''}</div>${fig ? `<div class="ph">${fig}</div>` : ''}</div>`;
         const titlu = ri === 0 ? `<h3>${esc(inc)}</h3>` : '';
         if (antet || titlu) { h += `<div class="cap">${antet}${titlu}${fh}</div>`; antet = ''; } else h += fh;
       }
     }
     h += `</section>`;
   }
-  h += `<div class="rfoot">Constatări v${esc(APP_VER)}${ai ? ' · rezumat făcut cu AI' : ''}</div>`;
   $('print').innerHTML = h;
   clearTimeout(toastT); $('toast').hidden = true;
   for (const i of $('print').querySelectorAll('img')) { try { if (i.decode) await i.decode(); } catch (e) { } }
