@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="ro" data-ver="0.4.2">
+<html lang="ro" data-ver="0.4.3">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -12,7 +12,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
-<link rel="stylesheet" href="style.css?v=0.4.2">
+<link rel="stylesheet" href="style.css?v=0.4.3">
 </head>
 <body>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
@@ -53,8 +53,7 @@
   <section id="vLock" class="view" hidden>
     <div class="lock">
       <svg><use href="#i-lock"/></svg>
-      <h2>Scrie codul echipei</h2>
-      <p>Sau deschide linkul primit pe WhatsApp. O singură dată pe telefon.</p>
+      <h2>Codul echipei</h2>
       <input id="inCod" type="text" inputmode="text" autocapitalize="characters" autocomplete="off" spellcheck="false" placeholder="ex. ABCD-1234">
       <p id="lockErr" class="err" hidden></p>
       <button id="btnCod" class="btn primary block big">Deschide aplicația</button>
@@ -65,7 +64,7 @@
   <section id="vStart" class="view" hidden>
     <div id="iosWarn" class="notice" hidden>
       <svg><use href="#i-alert"/></svg>
-      <div>Pe iPhone: apasă Partajează → <b>Adaugă pe ecranul principal</b> și deschide aplicația de acolo. Altfel constatările se pot pierde.</div>
+      <div>Partajează → <b>Adaugă pe ecranul principal</b></div>
     </div>
 
     <button id="btnContinua" class="cont" hidden>
@@ -100,8 +99,7 @@
 
   <!-- CONSTATĂRILE MELE: tot ce e pe telefon, pe apartamente -->
   <section id="vMele" class="view" hidden>
-    <input id="meleCauta" class="cauta" type="search" placeholder="Caută (apartament, încăpere, text)" autocomplete="off">
-    <p class="info">Atinge una ca s-o schimbi sau s-o ștergi.</p>
+    <input id="meleCauta" class="cauta" type="search" placeholder="Caută" autocomplete="off">
     <div class="chips filtre">
       <button type="button" class="chip on" data-f="toate">Toate</button>
       <button type="button" class="chip" data-f="netrimise">De trimis</button>
@@ -109,8 +107,7 @@
     <div id="meleList"></div>
     <div id="meleEmpty" class="empty" hidden>
       <svg><use href="#i-note"/></svg>
-      <div class="et">Nicio constatare aici</div>
-      <div>Alege un apartament și apasă <b>Constatare nouă</b>.</div>
+      <div class="et">Nicio constatare</div>
     </div>
   </section>
 
@@ -119,8 +116,7 @@
     <div id="aptList" class="list"></div>
     <div id="aptEmpty" class="empty" hidden>
       <svg><use href="#i-camera"/></svg>
-      <div class="et">Nicio constatare aici</div>
-      <div>Apasă <b>Constatare nouă</b>: faci o poză și spui ce e.</div>
+      <div class="et">Nicio constatare</div>
     </div>
     <div class="actionbar">
       <button id="btnAptUrm" class="btn" hidden></button>
@@ -132,30 +128,30 @@
   <section id="vObs" class="view" hidden>
     <div id="obsExportat" class="notice" hidden>
       <svg><use href="#i-alert"/></svg>
-      <div>E deja trimisă. Dacă o schimbi, se trimite din nou.</div>
+      <div>Deja trimisă</div>
     </div>
 
-    <div class="pas"><span class="nr">1</span>Fă o poză sau un video</div>
+    <div class="pas"><span class="nr">1</span>Poză sau video</div>
     <div id="photos" class="media">
       <label class="mbtn"><svg><use href="#i-camera"/></svg><span>Poză</span><input id="inCam" type="file" accept="image/*" capture="environment" hidden></label>
       <label class="mbtn"><svg><use href="#i-video"/></svg><span>Video</span><input id="inVid" type="file" accept="video/*" capture="environment" hidden></label>
     </div>
     <div id="thumbs" class="thumbs"></div>
-    <label class="galerie"><svg><use href="#i-image"/></svg>sau alege din galerie<input id="inGal" type="file" accept="image/*,video/*" multiple hidden></label>
+    <label class="galerie"><svg><use href="#i-image"/></svg>Galerie<input id="inGal" type="file" accept="image/*,video/*" multiple hidden></label>
 
     <div class="pas"><span class="nr">2</span>Spune ce e</div>
-    <button id="btnMic" class="mic" type="button"><svg><use href="#i-mic"/></svg><span>Apasă și vorbește</span></button>
+    <button id="btnMic" class="mic" type="button"><svg><use href="#i-mic"/></svg><span>Dictează</span></button>
     <div id="micInfo" class="info"></div>
-    <textarea id="txtObs" rows="2" placeholder="sau scrie aici (ex.: ușa de la baie, tocul zgâriat sus)"></textarea>
+    <textarea id="txtObs" rows="2" placeholder="sau scrie aici"></textarea>
     <div id="aiBar" class="aibar" hidden></div>
-    <button id="btnAi" class="linkbtn" type="button" hidden><svg><use href="#i-spark"/></svg>Completează automat textul</button>
+    <button id="btnAi" class="linkbtn" type="button" hidden><svg><use href="#i-spark"/></svg>Completează automat</button>
 
     <div class="pas"><span class="nr">3</span>Încăperea</div>
     <div id="incChips" class="chips"></div>
     <button id="incAlta" class="alta" type="button">Altă încăpere…</button>
 
     <details id="detObs" class="det">
-      <summary><span>Detalii (opțional)</span><span id="sumObs" class="sum"></span></summary>
+      <summary><span>Detalii</span><span id="sumObs" class="sum"></span></summary>
       <label class="frow"><span class="fl">Specialitate</span><span id="oSpec" class="fc"></span></label>
       <label class="frow"><span class="fl">Tip</span><span id="oTip" class="fc"></span></label>
       <label class="frow"><span class="fl">Prioritate</span><span id="oPrio" class="fc"></span></label>
@@ -174,20 +170,19 @@
   <!-- TRIMITE / EXPORT -->
   <section id="vGata" class="view" hidden>
     <p id="gxRez" class="rez"></p>
-    <label class="switch"><input id="doarNoi" type="checkbox" checked><span class="sw"></span><span>Doar ce nu am trimis încă</span></label>
+    <label class="switch"><input id="doarNoi" type="checkbox" checked><span class="sw"></span><span>Doar netrimise</span></label>
 
-    <button id="btnExpApp" class="btn primary block big"><svg><use href="#i-upload"/></svg><span id="lblExpApp">Salvează fișierul pe telefon</span></button>
-    <p class="info">Fișierul se pune în aplicația de verificări: meniu → „Combina backup-uri”.</p>
-    <button id="btnExpPdf" class="btn block"><svg><use href="#i-file"/></svg>Raport PDF cu poze</button>
+    <button id="btnExpApp" class="btn primary block big"><svg><use href="#i-upload"/></svg><span id="lblExpApp">Fișier pentru aplicația de verificări</span></button>
+    <button id="btnExpPdf" class="btn block"><svg><use href="#i-file"/></svg>Raport PDF</button>
     <button id="btnExpCsv" class="btn block"><svg><use href="#i-table"/></svg>Tabel Excel</button>
 
     <div id="gataSum" class="group"></div>
-    <button id="btnStergeExp" class="btn danger block"><svg><use href="#i-trash"/></svg>Șterge de pe telefon ce am trimis</button>
+    <button id="btnStergeExp" class="btn danger block"><svg><use href="#i-trash"/></svg>Șterge trimisele</button>
   </section>
 
   <!-- SETĂRI -->
   <section id="vSetari" class="view" hidden>
-    <div class="pas">Numele tău (apare pe constatări)</div>
+    <div class="pas">Numele tău</div>
     <input id="inUser" class="big" type="text" maxlength="20" placeholder="ex. JUMI" autocapitalize="characters">
     <div class="group info-box">
       <div><b>Asistent AI:</b> <span id="aiStare">…</span></div>
@@ -199,7 +194,7 @@
 
 <div id="sheet" class="sheet" hidden>
   <div class="sheetbox" role="dialog" aria-modal="true" aria-labelledby="shTitlu">
-    <div id="shTitlu" class="st">Constatarea nu e salvată</div>
+    <div id="shTitlu" class="st">Nesalvată</div>
     <button id="shSalv" class="btn primary block big" type="button"><svg><use href="#i-check"/></svg>Salvează</button>
     <button id="shArunc" class="btn danger block" type="button"><svg><use href="#i-trash"/></svg>Aruncă</button>
     <button id="shRamai" class="btn block" type="button">Rămân aici</button>
@@ -236,7 +231,7 @@
 function reparaAplicatia(fortat) {
   if (!fortat && navigator.onLine === false) {             // fără internet nu șterg nimic: n-aș mai putea aduce fișierele
     var b = document.getElementById('eroare');
-    if (b) { b.querySelector('.msg').textContent = 'Aplicația s-a actualizat, dar telefonul nu are internet. Redeschide când ai semnal.'; b.hidden = false; }
+    if (b) { b.querySelector('.msg').textContent = 'Fără internet. Redeschide când ai semnal.'; b.hidden = false; }
     return;
   }
   try {
@@ -260,8 +255,8 @@ window.addEventListener('error', function (e) {
   b.hidden = false; var l = document.getElementById('incarc'); if (l) l.hidden = true;
 });
 </script>
-<script src="lib/gifenc.js?v=0.4.2"></script>
-<script src="app.js?v=0.4.2"></script>
+<script src="lib/gifenc.js?v=0.4.3"></script>
+<script src="app.js?v=0.4.3"></script>
 <script>
 // pagina și codul trebuie să fie din aceeași versiune; altfel repar singur (o dată)
 (function () { var v = document.documentElement.getAttribute('data-ver'); if (typeof APP_VER === 'undefined' || APP_VER !== v) reparaAplicatia(false); })();

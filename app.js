@@ -6,7 +6,7 @@
    Datele stau pe telefon (IndexedDB). Spre AI (doar când completează) pleacă textul + imaginile constatării
    și câteva rânduri-exemplu din backup-ul importat (ca să scrie în același stil). */
 
-const APP_VER = '0.4.2';
+const APP_VER = '0.4.3';
 // pagină veche (din cache) + cod nou -> nu pornesc pe jumătate: șterg memoria veche și redeschid curat
 if (document.documentElement.getAttribute('data-ver') !== APP_VER) {
   (window.reparaAplicatia || function () {
@@ -71,7 +71,7 @@ async function incarcaDate(cod, fortat) {
   const pk = await decripteaza(cod, bin);
   aplicaPachet(pk);
   try { localStorage.setItem(LS.cod, cod); localStorage.setItem(LS.pachet, JSON.stringify(pk)); localStorage.setItem(LS.pachetCt, sem); }
-  catch (e) { toast('Telefonul nu mai are loc pentru datele echipei.', 6000); }
+  catch (e) { toast('Memorie plină', 6000); }
   return true;
 }
 let ses = { locatie: '', etaj: '', apt: '', spec: '', tip: 'Neconformitate', prioritate: 'Normal', resp: [], termenZile: 3 };
@@ -100,7 +100,7 @@ function db() {
       res(d);
     };
     r.onerror = () => rej(r.error);
-    r.onblocked = () => toast('Închide celelalte ferestre ale aplicației, apoi reîncarcă.', 6000);
+    r.onblocked = () => toast('Închide celelalte ferestre și reîncarcă', 6000);
   });
 }
 async function tx(store, mode, fn, retry = true) {
@@ -231,7 +231,7 @@ function makeChips(id, items, selected, multi = true, onchange) {
       };
       box.appendChild(b);
     });
-    if (!st.items.length) box.innerHTML = '<span class="muted small">Lista vine din backup (Setări)</span>';
+    if (!st.items.length) box.innerHTML = '';
   }
   draw();
   return {
@@ -254,7 +254,7 @@ function alegeDinLista(titlu, lista, curent, cb) {
       b.onclick = () => { inchide(); cb(v); };
       box.appendChild(b);
     });
-    if (!vis.length) box.innerHTML = '<div class="info">Nimic găsit.</div>';
+    if (!vis.length) box.innerHTML = '<div class="info">Nimic</div>';
     box.scrollTop = 0;
   };
   q.oninput = deseneaza; deseneaza();
@@ -311,7 +311,7 @@ window.addEventListener('popstate', e => {
   else { nav.pos++; nav.stack.length = nav.pos; nav.stack.push(v); history.replaceState({ v, d: nav.pos }, '', '#' + v); }
   const deschisa = ['picker', 'sheet', 'shFisier'].find(id => !$(id).hidden);
   if (deschisa && curView && v !== curView) { if (deschisa === 'shFisier') $('sfRenunta').click(); else $(deschisa).hidden = true; navPush(curView); return; }
-  if (saving && curView === 'obs' && v !== 'obs') { navPush('obs'); toast('O secundă, salvez…'); return; }
+  if (saving && curView === 'obs' && v !== 'obs') { navPush('obs'); toast('Salvez…'); return; }
   if (curView === 'obs' && v !== 'obs') {
     if (obsNesalvata()) { navPush('obs'); intreabaIesire(() => history.back()); return; }
     aruncObs();
@@ -358,8 +358,8 @@ $('btnCod').onclick = async () => {
   $('lockErr').hidden = true;
   if (!cod) { $('inCod').focus(); return; }
   $('btnCod').disabled = true;
-  try { await incarcaDate(cod, true); toast('Gata, aplicația e pregătită.'); go('start', true); }
-  catch (e) { $('lockErr').textContent = e.name === 'OperationError' ? 'Cod greșit. Cere linkul de la echipă.' : 'Nu am internet. Încearcă din nou.'; $('lockErr').hidden = false; }
+  try { await incarcaDate(cod, true); go('start', true); }
+  catch (e) { $('lockErr').textContent = e.name === 'OperationError' ? 'Cod greșit' : 'Fără internet'; $('lockErr').hidden = false; }
   finally { $('btnCod').disabled = false; }
 };
 
@@ -506,8 +506,8 @@ async function openObs(rec) {
   const tok = ++openSeq;
   let poze = [], farePoze = false;
   if (rec) {
-    try { poze = await dbPoze(rec.id); } catch (e) { toast('Nu pot citi pozele acum: ' + e.message, 5000); return; }
-    if (rec.nPoze && !poze.length) { farePoze = true; toast('Pozele acestei constatări nu se găsesc; textul îl poți schimba.', 5000); }
+    try { poze = await dbPoze(rec.id); } catch (e) { toast('Nu pot citi pozele', 5000); return; }
+    if (rec.nPoze && !poze.length) { farePoze = true; toast('Pozele nu se găsesc', 5000); }
   }
   if (tok !== openSeq) return;
   edit = rec ? { ...JSON.parse(JSON.stringify(rec)), poze } : newRec();
@@ -561,8 +561,7 @@ function deseneazaFirme(alese) {
   const cuSug = sug.length > 0 && rest.length > 0;
   const vizibile = !cuSug || firmeToate ? [...sug, ...rest] : [...sug, ...sel.filter(f => !sug.includes(f))];
   respObs = makeChips('oResp', vizibile, sel, true, onFormChange);
-  $('firmeSug').hidden = !cuSug;
-  $('firmeSug').textContent = cuSug ? `Fac de obicei „${spec}”:` : '';
+  $('firmeSug').hidden = true;
   const b = $('firmeAlte');
   b.hidden = !cuSug || firmeToate;
   b.innerHTML = `${icon('next')}Alte firme (${rest.filter(f => !sel.includes(f)).length})`;
@@ -597,7 +596,7 @@ function drawThumbs() {
   });
   inLucru.filter(j => j.ed === edit).forEach(j => {
     const d = document.createElement('div'); d.className = 'thumb busy';
-    d.innerHTML = j.tip === 'video' ? `<div class="prog"><span class="spin"></span><b>${j.pct}%</b><small>pregătesc video-ul</small></div>` : `<div class="prog"><span class="spin"></span><small>poză</small></div>`;
+    d.innerHTML = j.tip === 'video' ? `<div class="prog"><span class="spin"></span><b>${j.pct}%</b><small>video</small></div>` : `<div class="prog"><span class="spin"></span><small>poză</small></div>`;
     j.el = d; box.appendChild(d);
   });
 }
@@ -636,7 +635,7 @@ async function onFiles(e) {
   if (edit === ed) drawThumbs();
   let adaugate = 0;
   for (let i = 0; i < poze.length; i++) {
-    try { const p = await compress(poze[i]); ed.poze.push(p); adaugate++; } catch (err) { toast('Nu am putut citi o poză.'); }
+    try { const p = await compress(poze[i]); ed.poze.push(p); adaugate++; } catch (err) { toast('Poza nu se poate citi'); }
     joburi[i].termina();
   }
   if (adaugate) { pozeVer++; if (edit === ed) onFormChange(); }
@@ -648,10 +647,10 @@ function addVideo(f, ed) {
     if (edit !== ed) { job.termina(); return; }     // constatarea a fost aruncată între timp
     try {
       const r = await videoToGif(f, p => { job.pct = p; const b = job.el && job.el.querySelector('b'); if (b) b.textContent = p + '%'; });
-      if (r.taiat) toast(`Video lung: am păstrat primele ${r.sec} secunde.`, 4500);
+      if (r.taiat) toast(`Video tăiat la ${r.sec} s`, 3000);
       ed.poze.push(r.url); cadreGif.set(fp(r.url), r.cadre); pozeVer++;
       if (edit === ed) onFormChange();
-    } catch (err) { toast('Nu am putut pregăti video-ul: ' + err.message, 5000); }
+    } catch (err) { toast('Video-ul nu merge: ' + err.message, 5000); }
     finally { job.termina(); }
   });
 }
@@ -753,13 +752,13 @@ async function saveForm() {
     $('vObs').classList.add('salvez');
     while (inLucru.some(j => j.ed === ed)) {
       const pend = inLucru.filter(j => j.ed === ed);
-      toast(pend.some(j => j.tip === 'video') ? 'Termin video-ul, apoi salvez…' : 'Termin poza, apoi salvez…', 4000);
+      toast('Salvez…', 4000);
       await Promise.all(pend.map(j => j.gata));
     }
     if (micOn || rec) { stopMic(true); await asteptMic(); opresteMic(); }
     readForm();
-    if (!ed.obs && !ed.poze.length) { toast('Pune măcar o poză sau o descriere.'); return; }
-    if (!ed.inc) { toast('Alege încăperea.'); $('incChips').scrollIntoView({ block: 'center', behavior: 'smooth' }); return; }
+    if (!ed.obs && !ed.poze.length) { toast('Lipsește poza sau textul'); return; }
+    if (!ed.inc) { toast('Alege încăperea'); $('incChips').scrollIntoView({ block: 'center', behavior: 'smooth' }); return; }
     ai.seq++;                                          // un răspuns AI întârziat nu mai schimbă nimic
     if (ed.id && editOrig && editOrig === amprenta(ed)) {   // n-ai schimbat nimic: nu o marchez ca nouă (nu se reexportă)
       uitaCadre(ed); edit = null; formDirty = false; await dropDraft(); saving = false; inapoiLaApt(); return;
@@ -786,7 +785,7 @@ const vineDinLista = () => prevView() === 'apt' || prevView() === 'mele';
 function inapoiLaApt() { if (vineDinLista()) history.back(); else go('apt', true); }
 $('btnSalv').onclick = saveForm;
 $('btnSterge').onclick = async () => {
-  if (!edit || !edit.id || !confirm('Ștergi constatarea asta de pe telefon?')) return;
+  if (!edit || !edit.id || !confirm('Ștergi constatarea?')) return;
   const id = edit.id; await dbDel(id); dinLista(id); formDirty = false; edit = null; await dropDraft(); toast('Șters'); inapoiLaApt();
 };
 
@@ -794,18 +793,18 @@ $('btnSterge').onclick = async () => {
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 const ANDROID = /Android/i.test(navigator.userAgent);
 let rec = null, micOn = false, micBase = '', aiDupaMic = false, micIdleT = null, srOprit = false;
-function micActiv() { clearTimeout(micIdleT); if (micOn) micIdleT = setTimeout(() => { if (micOn) { stopMic(false); toast('Am oprit microfonul (nu am mai auzit nimic).', 3500); } }, 25000); }
+function micActiv() { clearTimeout(micIdleT); if (micOn) micIdleT = setTimeout(() => { if (micOn) { stopMic(false); toast('Microfon oprit', 2500); } }, 25000); }
 function micUi() {
   const b = $('btnMic'); b.classList.toggle('on', micOn);
-  b.innerHTML = micOn ? `${icon('stop')}<span>Am terminat</span>` : `${icon('mic')}<span>Apasă și vorbește</span>`;
+  b.innerHTML = micOn ? `${icon('stop')}<span>Oprește</span>` : `${icon('mic')}<span>Dictează</span>`;
 }
 function renderMicInfo() {
-  $('micInfo').textContent = (!SR || srOprit) ? 'Pe acest telefon: apasă căsuța de mai jos, apoi microfonul de pe tastatură.'
+  $('micInfo').textContent = (!SR || srOprit) ? ''
     : '';
 }
 const asteptMic = () => rec ? Promise.race([rec.sfarsit, pauza(1500)]) : Promise.resolve();
 async function startMic() {
-  if (!SR || srOprit) { toast('Apasă microfonul de pe tastatura telefonului și vorbește.', 4000); $('txtObs').focus(); return; }
+  if (!SR || srOprit) { toast('Folosește microfonul tastaturii', 3000); $('txtObs').focus(); return; }
   if (rec) {                                         // sesiunea veche încă se închide (pe iPhone ~1 s): îi aștept ultimele cuvinte
     await asteptMic();
     if (rec) { const v = rec; rec = null; try { v.abort(); } catch (e) { } }
@@ -835,9 +834,9 @@ async function startMic() {
     if (rec !== r || document.hidden) return;
     const opreste = msg => { micOn = false; aiDupaMic = false; toast(msg, 5000); };
     if (e.error === 'service-not-allowed') {
-      srOprit = true; opreste('Dictarea din aplicație nu merge pe acest telefon. Apasă microfonul de pe tastatură.'); renderMicInfo(); ta.focus();
-    } else if (e.error === 'not-allowed') opreste('Microfonul e blocat pentru aplicație. Permite-l din setările telefonului sau folosește microfonul de pe tastatură.');
-    else if (e.error === 'network') opreste('Dictarea are nevoie de internet. Scrie sau folosește tastatura.');
+      srOprit = true; opreste('Folosește microfonul tastaturii'); renderMicInfo(); ta.focus();
+    } else if (e.error === 'not-allowed') opreste('Microfon blocat (setările telefonului)');
+    else if (e.error === 'network') opreste('Dictarea cere internet');
     else if (e.error === 'audio-capture') opreste('Nu găsesc microfonul.');
   };
   r.onend = () => {
@@ -848,7 +847,7 @@ async function startMic() {
     if (ta.value !== textStart) onFormChange(); else aiUi();
   };
   try { r.start(); micOn = true; aiDupaMic = false; micUi(); aiUi(); micActiv(); }
-  catch (err) { rec = null; gata(); toast('Nu am putut porni dictarea.'); }
+  catch (err) { rec = null; gata(); toast('Dictarea nu pornește'); }
 }
 function stopMic(faraAi) {
   clearTimeout(micIdleT);
@@ -889,12 +888,12 @@ function aiUi() {
   const bar = $('aiBar');
   if (!ai.stare || micOn) { bar.hidden = true; return; }
   bar.hidden = false; bar.className = 'aibar ' + ai.stare;
-  if (ai.stare === 'lucru') bar.innerHTML = `<span class="spin"></span><span>Scriu rândul…</span>`;
+  if (ai.stare === 'lucru') bar.innerHTML = `<span class="spin"></span><span>Completez…</span>`;
   else if (ai.stare === 'gata') {
-    bar.innerHTML = `${icon('spark')}<span>Text rescris din ce ai spus.</span><button type="button" id="aiUndo" class="linkbtn">Anulează</button>`;
+    bar.innerHTML = `${icon('spark')}<span>Completat</span><button type="button" id="aiUndo" class="linkbtn">Anulează</button>`;
     $('aiUndo').onclick = aiAnuleaza;
   } else if (ai.stare === 'eroare') {
-    bar.innerHTML = `${icon('alert')}<span>Nu am putut completa: ${esc(ai.info)}</span><button type="button" id="aiRetry" class="linkbtn">Reîncearcă</button>`;
+    bar.innerHTML = `${icon('alert')}<span>${esc(ai.info)}</span><button type="button" id="aiRetry" class="linkbtn">Reîncearcă</button>`;
     $('aiRetry').onclick = aiRun;
   }
 }
@@ -972,7 +971,7 @@ function curat(x) {
 }
 function aplicaAi(o, text) {
   const obs = curat(o.obs);
-  if (!obs) { aiStare('eroare', 'nu am înțeles textul'); return; }
+  if (!obs) { aiStare('eroare', 'Nu am înțeles textul'); return; }
   ai.undo = { txt: $('txtObs').value };
   $('txtObs').value = obs; creste();
   edit._meta = { ...(edit._meta || {}), dictat: text };
@@ -996,15 +995,15 @@ function grupat(recs) {
 }
 function renderGata() {
   head('Trimite constatările', '');
-  $('lblExpApp').textContent = IOS ? 'Trimite fișierul (WhatsApp, mail, Fișiere)' : 'Salvează fișierul pe telefon';
+  $('lblExpApp').textContent = 'Fișier pentru aplicația de verificări';
   const recs = recsExport();
   const g = grupat(recs);
   const np = recs.reduce((x, r) => x + (r.nPoze || 0), 0);
   const pl = (n, a, b) => `${n} ${n === 1 ? a : b}`;
-  $('gxRez').textContent = recs.length ? [pl(recs.length, 'constatare', 'constatări'), pl(g.size, 'loc', 'locuri'), pl(np, 'poză / video', 'poze / video')].join(' · ') : 'Nimic de trimis.';
+  $('gxRez').textContent = recs.length ? [pl(recs.length, 'constatare', 'constatări'), pl(g.size, 'loc', 'locuri'), pl(np, 'poză / video', 'poze / video')].join(' · ') : 'Nimic de trimis';
   let h = '';
   g.forEach((l, k) => { const [lo, et, ap] = k.split(' · '); h += `<div class="grow-row"><span><b>${esc(ap)}</b> · ${esc(lo)} · ${esc(et)}</span><span class="pill">${l.length}</span></div>`; });
-  $('gataSum').innerHTML = h || '<div class="grow-row muted">Nimic de exportat.</div>';
+  $('gataSum').innerHTML = h || '';
 }
 $('doarNoi').onchange = renderGata;
 const stamp = () => { const d = new Date(); return `${isoDate(d)}_${pad(d.getHours())}${pad(d.getMinutes())}`; };
@@ -1018,7 +1017,7 @@ function cereTrimitere(file) {
     $('sfTrimite').onclick = async () => {
       sh.hidden = true;
       try { await navigator.share({ files: [file], title: file.name }); res(true); }
-      catch (e) { if (e.name !== 'AbortError') toast('Nu am putut trimite: ' + e.message, 5000); res(false); }
+      catch (e) { if (e.name !== 'AbortError') toast('Nu s-a trimis: ' + e.message, 5000); res(false); }
     };
     $('sfRenunta').onclick = () => { sh.hidden = true; res(false); };
   });
@@ -1039,8 +1038,8 @@ const unaCateUna = fn => async () => {               // (18) dublu-tap pe export
 };
 $('btnExpApp').onclick = unaCateUna(async () => {
   const recs = recsExport();
-  if (!recs.length) { toast('Nimic de exportat.'); return; }
-  toast('Pregătesc fișierul…', 2000);
+  if (!recs.length) { toast('Nimic de trimis'); return; }
+  toast('Pregătesc…', 2000);
   const parti = ['{"observatii":['];
   for (let i = 0; i < recs.length; i++) {
     const pz = await dbPoze(recs[i].id).catch(() => []);
@@ -1053,11 +1052,11 @@ $('btnExpApp').onclick = unaCateUna(async () => {
   const t = new Date().toISOString();
   for (const r of recs) await patchMeta(r.id, { exportat: t });
   renderGata();
-  toast(`Trimise: ${recs.length}. În aplicația de verificări: meniu → „Combina backup-uri”.`, 5000);
+  toast(`Trimise: ${recs.length}`, 2500);
 });
 $('btnExpCsv').onclick = unaCateUna(async () => {
   const recs = recsExport();
-  if (!recs.length) { toast('Nimic de exportat.'); return; }
+  if (!recs.length) { toast('Nimic de trimis'); return; }
   const cols = ['Locatie', 'Etaj', 'Apartament', 'Incapere', 'Observatie', 'Specialitate', 'Tip', 'Prioritate', 'Responsabil', 'Data', 'Termen', 'Nr imagini', 'Text dictat', 'Id'];
   const q = v => { const s = String(v ?? ''); return /[;"\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
   const rows = recs.map(r => [r.locatie, r.etaj, r.apt, r.inc, r.obs, r.spec, r.tip, r.prioritate, (r.resp || []).join(' / '), r.dataObs, r.termen, r.nPoze || 0, r._meta?.dictat || '', r.id].map(q).join(';'));
@@ -1066,8 +1065,8 @@ $('btnExpCsv').onclick = unaCateUna(async () => {
 });
 $('btnExpPdf').onclick = unaCateUna(async () => {
   const recs = recsExport();
-  if (!recs.length) { toast('Nimic de exportat.'); return; }
-  toast('Pregătesc raportul…', 2000);
+  if (!recs.length) { toast('Nimic de trimis'); return; }
+  toast('Pregătesc…', 2000);
   const g = grupat(recs);
   let h = `<h1>Raport constatări</h1><div class="sub">${esc(roDateTime(new Date()))} · ${recs.length} constatări${getUser() ? ' · ' + esc(getUser()) : ''}</div>`;
   for (const [k, l] of g) {
@@ -1090,8 +1089,8 @@ $('btnExpPdf').onclick = unaCateUna(async () => {
 window.addEventListener('afterprint', () => { $('print').innerHTML = ''; });
 $('btnStergeExp').onclick = async () => {
   const exp = all.filter(r => r._meta?.exportat);
-  if (!exp.length) { toast('Nu ai nimic exportat de șters.'); return; }
-  if (!confirm(`Ștergi de pe telefon ${exp.length} constatări deja exportate?\n(Verifică întâi că au intrat în aplicația de verificări.)`)) return;
+  if (!exp.length) { toast('Nimic de șters'); return; }
+  if (!confirm(`Ștergi ${exp.length} constatări trimise?`)) return;
   for (const r of exp) { await dbDel(r.id); dinLista(r.id); }
   renderGata(); toast('Șters');
 };
@@ -1101,11 +1100,11 @@ async function renderSetari() {
   head('Setări');
   $('inUser').value = getUser();
   const nApt = Object.entries(cfg.apartamente || {}).filter(([k]) => eLocuinte(k)).reduce((a, [, v]) => a + v.length, 0);
-  $('cfgInfo').textContent = `${(cfg.locatii || []).length} clădiri și zone, ${nApt} apartamente, ${(cfg.responsabili || []).length} firme (din aplicația de verificări)`;
+  $('cfgInfo').textContent = `${(cfg.locatii || []).length} clădiri și zone, ${nApt} apartamente, ${(cfg.responsabili || []).length} firme`;
   verificaAi();
   let spatiu = '';
   try { const e = await navigator.storage.estimate(); spatiu = ` · ~${Math.round(e.usage / 1048576)} MB folosiți`; } catch (e) { }
-  $('infoApp').textContent = `${all.length} constatări pe acest telefon · versiunea ${APP_VER}`;
+  $('infoApp').textContent = `${all.length} constatări · v${APP_VER}`;
 }
 $('inUser').addEventListener('input', () => { localStorage.setItem(LS.user, $('inUser').value.trim().toUpperCase().replace(/[^A-Z0-9_]/g, '').slice(0, 20)); });
 $('inUser').onchange = () => {
@@ -1121,7 +1120,7 @@ async function verificaAi() {
     const d = await aiFetch('/user/balance', { method: 'GET' });
     if (seq !== verifSeq) return;
     const b = (d.balance_infos || [])[0];
-    st.textContent = 'pornit pentru toată echipa' + (b && Number(b.total_balance) < 1 ? ' (creditul e aproape gata)' : '');
+    st.textContent = 'pornit' + (b && Number(b.total_balance) < 1 ? ' (credit aproape gata)' : '');
   } catch (e) { if (seq === verifSeq) st.textContent = e.message; }
 }
 
@@ -1129,14 +1128,14 @@ async function verificaAi() {
 (async function init() {
   try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) { }
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => { });
-  try { await reload(); } catch (e) { toast('Nu pot citi memoria telefonului: ' + e.message, 6000); }
+  try { await reload(); } catch (e) { toast('Memoria telefonului nu se poate citi', 6000); }
   // codul echipei: din link (?k=…) sau de pe telefon. Datele decriptate se țin pe telefon; se reîmprospătează când se schimbă.
   const codUrl = normCod(new URLSearchParams(location.search).get('k'));
   const codSalvat = localStorage.getItem(LS.cod) || '';
   try { const pk = JSON.parse(localStorage.getItem(LS.pachet) || 'null'); if (pk && pk.cfg) aplicaPachet(pk); } catch (e) { }
-  const arataEroareCod = e => { $('lockErr').textContent = e.name === 'OperationError' ? 'Codul din link nu e bun. Cere linkul nou de la echipă.' : 'Prima dată ai nevoie de internet.'; $('lockErr').hidden = false; };
+  const arataEroareCod = e => { $('lockErr').textContent = e.name === 'OperationError' ? 'Cod greșit' : 'Fără internet'; $('lockErr').hidden = false; };
   const inFundal = c => incarcaDate(c).then(nou => { if (nou && curView === 'start') renderStart(); })
-    .catch(e => { if (e.name === 'OperationError') toast('Lista echipei s-a schimbat: deschide linkul nou primit.', 6000); });
+    .catch(e => { if (e.name === 'OperationError') toast('Deschide linkul nou al echipei', 6000); });
   if (codUrl && codUrl !== codSalvat) {              // link nou sau alt cod
     try { await incarcaDate(codUrl, true); }
     catch (e) { if (!PACHET) arataEroareCod(e); else if (codSalvat) inFundal(codSalvat); }
@@ -1161,7 +1160,7 @@ async function verificaAi() {
       nav = { stack: [], pos: -1 }; navReplace('start'); navPush('apt'); navPush('obs');
     }
     show('obs');
-    toast('Am recuperat constatarea începută.', 3500);
+    toast('Constatare recuperată', 2500);
   } else {
     if (d) dropDraft();
     if (nav.pos < 0) navReplace('start');            // pornire nouă (de pe ecranul telefonului) = mereu „Unde ești?”
