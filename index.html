@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="ro">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1f3a5f">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Constatări">
+<title>Constatări</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="bar">
+  <button id="btnBack" class="icon" aria-label="Înapoi" hidden>←</button>
+  <h1 id="title">Constatări</h1>
+  <button id="btnSetari" class="icon" aria-label="Setări">⚙️</button>
+</header>
+
+<main>
+  <!-- START -->
+  <section id="vStart" class="view">
+    <div id="cfgWarn" class="card warn" hidden>
+      Nu am încă listele (locații, etaje, apartamente, firme).<br>
+      Importă o dată <b>backup-ul aplicației de verificări</b> din ⚙️ Setări. Până atunci poți scrie de mână.
+    </div>
+    <div class="card">
+      <h2>Verificare nouă</h2>
+      <label>Locație <span id="fLocatie"></span></label>
+      <label>Etaj <span id="fEtaj"></span></label>
+      <label>Apartament / zonă <span id="fApt"></span></label>
+      <details class="defaults">
+        <summary>Implicit pentru constatări (specialitate, responsabil, tip...)</summary>
+        <label>Specialitate <span id="fSpec"></span></label>
+        <label>Tip <span id="fTip"></span></label>
+        <label>Prioritate <span id="fPrio"></span></label>
+        <div class="lbl">Responsabil</div>
+        <div id="fResp" class="chips"></div>
+        <label>Termen (zile de la azi) <input id="fTermenZile" type="number" min="0" max="60" value="3" inputmode="numeric"></label>
+      </details>
+      <button id="btnIncepe" class="primary big">Începe verificarea</button>
+    </div>
+    <div class="card">
+      <div id="stat" class="muted"></div>
+      <button id="btnLaGata" class="big">✓ Vezi tot / Gata (export)</button>
+    </div>
+  </section>
+
+  <!-- APARTAMENT -->
+  <section id="vApt" class="view" hidden>
+    <div class="aptHead">
+      <div id="aptTitle" class="aptTitle"></div>
+      <div id="aptSub" class="muted"></div>
+    </div>
+    <button id="btnNou" class="primary big">📷 Constatare nouă</button>
+    <div id="aptList" class="list"></div>
+    <div class="row">
+      <button id="btnAptUrm" class="big">Apartamentul următor →</button>
+      <button id="btnGata" class="ok big">✓ Gata</button>
+    </div>
+  </section>
+
+  <!-- FORMULAR CONSTATARE -->
+  <section id="vObs" class="view" hidden>
+    <div class="card">
+      <div class="row">
+        <label class="btnFile primary">📷 Fă poză<input id="inCam" type="file" accept="image/*" capture="environment" hidden></label>
+        <label class="btnFile">🖼 Din galerie<input id="inGal" type="file" accept="image/*" multiple hidden></label>
+      </div>
+      <div id="thumbs" class="thumbs"></div>
+    </div>
+    <div class="card">
+      <div class="lbl">Încăpere</div>
+      <div id="incChips" class="chips"></div>
+      <select id="incAlta"><option value="">+ altă încăpere…</option></select>
+    </div>
+    <div class="card">
+      <div class="lbl">Ce e în neregulă</div>
+      <div class="dict">
+        <textarea id="txtObs" rows="4" placeholder="Apasă 🎤 și spune ce vezi, sau scrie / dictează de pe tastatură."></textarea>
+        <button id="btnMic" class="mic" aria-label="Dictează">🎤</button>
+      </div>
+      <div id="micInfo" class="muted small"></div>
+    </div>
+    <div class="card">
+      <details id="detObs">
+        <summary id="sumObs">Detalii</summary>
+        <label>Specialitate <span id="oSpec"></span></label>
+        <label>Tip <span id="oTip"></span></label>
+        <label>Prioritate <span id="oPrio"></span></label>
+        <div class="lbl">Responsabil</div>
+        <div id="oResp" class="chips"></div>
+        <label>Termen <input id="oTermen" type="date"></label>
+      </details>
+    </div>
+    <div class="row sticky">
+      <button id="btnSalvNou" class="primary big">Salvează + încă una</button>
+      <button id="btnSalv" class="ok big">Salvează</button>
+    </div>
+    <button id="btnSterge" class="danger" hidden>Șterge constatarea</button>
+  </section>
+
+  <!-- GATA / EXPORT -->
+  <section id="vGata" class="view" hidden>
+    <div class="card">
+      <h2>Gata – export</h2>
+      <label class="check"><input id="doarNoi" type="checkbox" checked> doar ce n-am exportat încă</label>
+      <div id="gataSum"></div>
+    </div>
+    <div class="card">
+      <button id="btnExpApp" class="primary big">⬆ Fișier pentru aplicația de verificări</button>
+      <p class="muted small">În aplicația de verificări: ☰ → „Combina backup-uri” → alegi fișierul.</p>
+      <button id="btnExpPdf" class="big">📄 Raport PDF / print</button>
+      <button id="btnExpCsv" class="big">📊 Tabel Excel (CSV)</button>
+    </div>
+    <div class="card">
+      <button id="btnStergeExp" class="danger">Șterge de pe telefon ce am exportat</button>
+    </div>
+  </section>
+
+  <!-- SETARI -->
+  <section id="vSetari" class="view" hidden>
+    <div class="card">
+      <h2>Setări</h2>
+      <label>Numele tău (scurt, apare în id-ul constatării) <input id="inUser" type="text" maxlength="20" placeholder="ex. JUMI"></label>
+      <button id="btnSalvUser">Salvează numele</button>
+    </div>
+    <div class="card">
+      <h2>Liste</h2>
+      <p class="muted small">Locațiile, etajele, apartamentele, încăperile, specialitățile și firmele se iau din backup-ul aplicației de verificări (☰ → Backup). Se importă o dată pe telefon; nu se trimite nicăieri.</p>
+      <label class="btnFile">📂 Importă backup / config (.json)<input id="inCfg" type="file" accept=".json,application/json" hidden></label>
+      <div id="cfgInfo" class="muted small"></div>
+    </div>
+    <div class="card">
+      <div id="infoApp" class="muted small"></div>
+    </div>
+  </section>
+</main>
+
+<div id="toast" class="toast" hidden></div>
+<div id="print" class="print"></div>
+
+<script src="app.js"></script>
+</body>
+</html>
