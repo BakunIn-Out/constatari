@@ -3,8 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#1f3a5f">
+<meta name="theme-color" content="#ffffff">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Constatări">
 <title>Constatări</title>
 <link rel="manifest" href="manifest.webmanifest">
@@ -13,129 +14,184 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<header class="bar">
-  <button id="btnBack" class="icon" aria-label="Înapoi" hidden>←</button>
-  <h1 id="title">Constatări</h1>
-  <button id="btnSetari" class="icon" aria-label="Setări">⚙️</button>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-back" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></symbol>
+    <symbol id="i-next" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></symbol>
+    <symbol id="i-camera" viewBox="0 0 24 24"><path d="M14.5 4h-5L7.5 6.5H4a2 2 0 0 0-2 2V18a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8.5a2 2 0 0 0-2-2h-3.5z"/><circle cx="12" cy="13" r="3.5"/></symbol>
+    <symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="M21 15l-3.1-3.1a2 2 0 0 0-2.8 0L6 21"/></symbol>
+    <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M19 10v1a7 7 0 0 1-14 0v-1M12 18v4"/></symbol>
+    <symbol id="i-stop" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></symbol>
+    <symbol id="i-upload" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></symbol>
+    <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h5"/></symbol>
+    <symbol id="i-table" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18"/></symbol>
+    <symbol id="i-building" viewBox="0 0 24 24"><rect x="4" y="2" width="16" height="20" rx="1.5"/><path d="M9 22v-4h6v4M8 6h.01M12 6h.01M16 6h.01M8 10h.01M12 10h.01M16 10h.01M8 14h.01M12 14h.01M16 14h.01"/></symbol>
+    <symbol id="i-note" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></symbol>
+    <symbol id="i-folder" viewBox="0 0 24 24"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.7-.9l-.8-1.2A2 2 0 0 0 7.9 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></symbol>
+  </defs>
+</svg>
+
+<header class="appbar">
+  <button id="btnBack" class="ibtn" aria-label="Înapoi" hidden><svg><use href="#i-back"/></svg></button>
+  <div class="titles">
+    <div id="title" class="t1">Constatări</div>
+    <div id="subtitle" class="t2"></div>
+  </div>
+  <button id="btnSetari" class="ibtn" aria-label="Setări"><svg><use href="#i-settings"/></svg></button>
 </header>
 
 <main>
   <!-- START -->
   <section id="vStart" class="view">
-    <div id="cfgWarn" class="card warn" hidden>
-      Nu am încă listele (locații, etaje, apartamente, firme).<br>
-      Importă o dată <b>backup-ul aplicației de verificări</b> din ⚙️ Setări. Până atunci poți scrie de mână.
+    <div id="cfgWarn" class="notice" hidden>
+      <svg><use href="#i-alert"/></svg>
+      <div>Listele de locații, apartamente și firme nu sunt încă importate. <a href="#setari">Importă backup-ul</a> o singură dată; până atunci poți completa manual.</div>
     </div>
-    <div class="card">
-      <h2>Verificare nouă</h2>
-      <label>Locație <span id="fLocatie"></span></label>
-      <label>Etaj <span id="fEtaj"></span></label>
-      <label>Apartament / zonă <span id="fApt"></span></label>
-      <details class="defaults">
-        <summary>Implicit pentru constatări (specialitate, responsabil, tip...)</summary>
-        <label>Specialitate <span id="fSpec"></span></label>
-        <label>Tip <span id="fTip"></span></label>
-        <label>Prioritate <span id="fPrio"></span></label>
-        <div class="lbl">Responsabil</div>
-        <div id="fResp" class="chips"></div>
-        <label>Termen (zile de la azi) <input id="fTermenZile" type="number" min="0" max="60" value="3" inputmode="numeric"></label>
-      </details>
-      <button id="btnIncepe" class="primary big">Începe verificarea</button>
+
+    <div class="sectionlabel">Verificare nouă</div>
+    <div class="group">
+      <label class="frow"><span class="fl">Locație</span><span id="fLocatie" class="fc"></span></label>
+      <label class="frow"><span class="fl">Etaj</span><span id="fEtaj" class="fc"></span></label>
+      <label class="frow"><span class="fl">Apartament</span><span id="fApt" class="fc"></span></label>
     </div>
-    <div class="card">
-      <div id="stat" class="muted"></div>
-      <button id="btnLaGata" class="big">✓ Vezi tot / Gata (export)</button>
+
+    <details class="group collapsible">
+      <summary class="frow"><span class="fl">Valori implicite</span><span class="fc muted" id="defSum">Specialitate, tip, responsabil</span></summary>
+      <label class="frow"><span class="fl">Specialitate</span><span id="fSpec" class="fc"></span></label>
+      <label class="frow"><span class="fl">Tip</span><span id="fTip" class="fc"></span></label>
+      <label class="frow"><span class="fl">Prioritate</span><span id="fPrio" class="fc"></span></label>
+      <div class="fblock"><span class="fl">Responsabil</span><div id="fResp" class="chips"></div></div>
+      <label class="frow"><span class="fl">Termen</span><span class="fc"><span class="inline"><input id="fTermenZile" type="number" min="0" max="60" value="3" inputmode="numeric"> zile</span></span></label>
+    </details>
+
+    <button id="btnIncepe" class="btn primary block">Începe verificarea</button>
+
+    <div class="sectionlabel">Pe acest telefon</div>
+    <div class="tiles">
+      <div class="tile"><div id="stTotal" class="tn">0</div><div class="tl">constatări</div></div>
+      <div class="tile"><div id="stNoi" class="tn">0</div><div class="tl">neexportate</div></div>
     </div>
+    <button id="btnLaGata" class="btn block">Export și raport</button>
   </section>
 
   <!-- APARTAMENT -->
   <section id="vApt" class="view" hidden>
-    <div class="aptHead">
-      <div id="aptTitle" class="aptTitle"></div>
-      <div id="aptSub" class="muted"></div>
-    </div>
-    <button id="btnNou" class="primary big">📷 Constatare nouă</button>
+    <div class="aptmeta"><span id="aptCount" class="pill"></span></div>
     <div id="aptList" class="list"></div>
-    <div class="row">
-      <button id="btnAptUrm" class="big">Apartamentul următor →</button>
-      <button id="btnGata" class="ok big">✓ Gata</button>
+    <div id="aptEmpty" class="empty" hidden>
+      <svg><use href="#i-camera"/></svg>
+      <div class="et">Nicio constatare încă</div>
+      <div class="muted">Fotografiază neconformitatea, apoi dictează ce vezi.</div>
+    </div>
+    <div class="actionbar">
+      <button id="btnAptUrm" class="btn">Următorul<svg><use href="#i-next"/></svg></button>
+      <button id="btnNou" class="btn primary grow"><svg><use href="#i-plus"/></svg>Constatare nouă</button>
+      <button id="btnGata" class="btn" aria-label="Finalizează"><svg><use href="#i-check"/></svg>Gata</button>
     </div>
   </section>
 
   <!-- FORMULAR CONSTATARE -->
   <section id="vObs" class="view" hidden>
-    <div class="card">
-      <div class="row">
-        <label class="btnFile primary">📷 Fă poză<input id="inCam" type="file" accept="image/*" capture="environment" hidden></label>
-        <label class="btnFile">🖼 Din galerie<input id="inGal" type="file" accept="image/*" multiple hidden></label>
-      </div>
+    <div class="sectionlabel">Fotografii</div>
+    <div class="photos">
+      <label class="addph primary"><svg><use href="#i-camera"/></svg><span>Fotografiază</span><input id="inCam" type="file" accept="image/*" capture="environment" hidden></label>
+      <label class="addph"><svg><use href="#i-image"/></svg><span>Galerie</span><input id="inGal" type="file" accept="image/*" multiple hidden></label>
       <div id="thumbs" class="thumbs"></div>
     </div>
-    <div class="card">
-      <div class="lbl">Încăpere</div>
+
+    <div class="sectionlabel">Încăpere</div>
+    <div class="group pad">
       <div id="incChips" class="chips"></div>
-      <select id="incAlta"><option value="">+ altă încăpere…</option></select>
+      <select id="incAlta" class="subtle"><option value="">Altă încăpere…</option></select>
     </div>
-    <div class="card">
-      <div class="lbl">Ce e în neregulă</div>
-      <div class="dict">
-        <textarea id="txtObs" rows="4" placeholder="Apasă 🎤 și spune ce vezi, sau scrie / dictează de pe tastatură."></textarea>
-        <button id="btnMic" class="mic" aria-label="Dictează">🎤</button>
+
+    <div class="sectionlabel">Descriere</div>
+    <div class="group pad">
+      <textarea id="txtObs" rows="3" placeholder="Ex.: Toc ușă baie murdar de vopsea, balamale încărcate cu material"></textarea>
+      <div class="dictrow">
+        <button id="btnMic" class="mic" type="button"><svg><use href="#i-mic"/></svg><span>Dictează</span></button>
+        <div id="micInfo" class="muted small"></div>
       </div>
-      <div id="micInfo" class="muted small"></div>
     </div>
-    <div class="card">
-      <details id="detObs">
-        <summary id="sumObs">Detalii</summary>
-        <label>Specialitate <span id="oSpec"></span></label>
-        <label>Tip <span id="oTip"></span></label>
-        <label>Prioritate <span id="oPrio"></span></label>
-        <div class="lbl">Responsabil</div>
-        <div id="oResp" class="chips"></div>
-        <label>Termen <input id="oTermen" type="date"></label>
-      </details>
+
+    <details id="detObs" class="group collapsible">
+      <summary class="frow"><span class="fl">Detalii</span><span id="sumObs" class="fc muted"></span></summary>
+      <label class="frow"><span class="fl">Specialitate</span><span id="oSpec" class="fc"></span></label>
+      <label class="frow"><span class="fl">Tip</span><span id="oTip" class="fc"></span></label>
+      <label class="frow"><span class="fl">Prioritate</span><span id="oPrio" class="fc"></span></label>
+      <div class="fblock"><span class="fl">Responsabil</span><div id="oResp" class="chips"></div></div>
+      <label class="frow"><span class="fl">Termen</span><span class="fc"><input id="oTermen" type="date"></span></label>
+    </details>
+
+    <button id="btnSterge" class="btn danger block" hidden><svg><use href="#i-trash"/></svg>Șterge constatarea</button>
+
+    <div class="actionbar">
+      <button id="btnSalvNou" class="btn grow">Salvează și continuă</button>
+      <button id="btnSalv" class="btn primary grow"><svg><use href="#i-check"/></svg>Salvează</button>
     </div>
-    <div class="row sticky">
-      <button id="btnSalvNou" class="primary big">Salvează + încă una</button>
-      <button id="btnSalv" class="ok big">Salvează</button>
-    </div>
-    <button id="btnSterge" class="danger" hidden>Șterge constatarea</button>
   </section>
 
   <!-- GATA / EXPORT -->
   <section id="vGata" class="view" hidden>
-    <div class="card">
-      <h2>Gata – export</h2>
-      <label class="check"><input id="doarNoi" type="checkbox" checked> doar ce n-am exportat încă</label>
-      <div id="gataSum"></div>
+    <div class="tiles">
+      <div class="tile"><div id="gxObs" class="tn">0</div><div class="tl">constatări</div></div>
+      <div class="tile"><div id="gxPoze" class="tn">0</div><div class="tl">fotografii</div></div>
+      <div class="tile"><div id="gxApt" class="tn">0</div><div class="tl">apartamente</div></div>
     </div>
-    <div class="card">
-      <button id="btnExpApp" class="primary big">⬆ Fișier pentru aplicația de verificări</button>
-      <p class="muted small">În aplicația de verificări: ☰ → „Combina backup-uri” → alegi fișierul.</p>
-      <button id="btnExpPdf" class="big">📄 Raport PDF / print</button>
-      <button id="btnExpCsv" class="big">📊 Tabel Excel (CSV)</button>
+    <label class="switch"><input id="doarNoi" type="checkbox" checked><span class="sw"></span><span>Doar ce nu am exportat încă</span></label>
+
+    <div class="sectionlabel">Export</div>
+    <div class="group">
+      <button id="btnExpApp" class="lrow">
+        <span class="lic accent"><svg><use href="#i-upload"/></svg></span>
+        <span class="ltx"><b>Fișier pentru aplicația de verificări</b><small>Se importă din meniu → „Combina backup-uri”</small></span>
+        <svg class="chev"><use href="#i-next"/></svg>
+      </button>
+      <button id="btnExpPdf" class="lrow">
+        <span class="lic"><svg><use href="#i-file"/></svg></span>
+        <span class="ltx"><b>Raport PDF</b><small>Pe apartamente și încăperi, cu fotografii</small></span>
+        <svg class="chev"><use href="#i-next"/></svg>
+      </button>
+      <button id="btnExpCsv" class="lrow">
+        <span class="lic"><svg><use href="#i-table"/></svg></span>
+        <span class="ltx"><b>Tabel Excel (CSV)</b><small>Un rând pe constatare</small></span>
+        <svg class="chev"><use href="#i-next"/></svg>
+      </button>
     </div>
-    <div class="card">
-      <button id="btnStergeExp" class="danger">Șterge de pe telefon ce am exportat</button>
-    </div>
+
+    <div class="sectionlabel">Conținut</div>
+    <div id="gataSum" class="group"></div>
+
+    <button id="btnStergeExp" class="btn danger block"><svg><use href="#i-trash"/></svg>Șterge de pe telefon ce am exportat</button>
   </section>
 
   <!-- SETARI -->
   <section id="vSetari" class="view" hidden>
-    <div class="card">
-      <h2>Setări</h2>
-      <label>Numele tău (scurt, apare în id-ul constatării) <input id="inUser" type="text" maxlength="20" placeholder="ex. JUMI"></label>
-      <button id="btnSalvUser">Salvează numele</button>
+    <div class="sectionlabel">Utilizator</div>
+    <div class="group">
+      <label class="frow"><span class="fl">Nume scurt</span><span class="fc"><input id="inUser" type="text" maxlength="20" placeholder="ex. JUMI" autocapitalize="characters"></span></label>
     </div>
-    <div class="card">
-      <h2>Liste</h2>
-      <p class="muted small">Locațiile, etajele, apartamentele, încăperile, specialitățile și firmele se iau din backup-ul aplicației de verificări (☰ → Backup). Se importă o dată pe telefon; nu se trimite nicăieri.</p>
-      <label class="btnFile">📂 Importă backup / config (.json)<input id="inCfg" type="file" accept=".json,application/json" hidden></label>
-      <div id="cfgInfo" class="muted small"></div>
+    <p class="hint">Apare în identificatorul fiecărei constatări, ca să se știe cine a introdus-o.</p>
+
+    <div class="sectionlabel">Liste</div>
+    <div class="group">
+      <label class="lrow">
+        <span class="lic"><svg><use href="#i-folder"/></svg></span>
+        <span class="ltx"><b>Importă backup / config</b><small id="cfgInfo">Nicio listă importată</small></span>
+        <svg class="chev"><use href="#i-next"/></svg>
+        <input id="inCfg" type="file" accept=".json,application/json" hidden>
+      </label>
     </div>
-    <div class="card">
-      <div id="infoApp" class="muted small"></div>
-    </div>
+    <p class="hint">Locațiile, etajele, apartamentele, încăperile și firmele se iau din backup-ul aplicației de verificări. Fișierul se citește doar pe telefon.</p>
+
+    <div class="sectionlabel">Despre</div>
+    <div class="group pad"><div id="infoApp" class="muted small"></div></div>
   </section>
 </main>
 

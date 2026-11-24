@@ -3,7 +3,7 @@
    Poze + dictare pe teren -> fișier compatibil cu „Combina backup-uri” din aplicația de verificări.
    Nicio dată nu pleacă de pe telefon: totul stă în IndexedDB până la export. */
 
-const APP_VER = '0.1.0';
+const APP_VER = '0.1.1';
 const LS = { cfg: 'constatari_cfg', user: 'constatari_user', ses: 'constatari_sesiune' };
 const DEF = {
   locatii: [], etaje: {}, apartamente: {},
@@ -17,6 +17,8 @@ const CAMERE_COMUNE = /^(baie|bucatarie|living|dormitor|hol|balcon|terasa|logie|
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const head = (t, sub = '') => { $('title').textContent = t; $('subtitle').textContent = sub; };
+const icon = n => `<svg><use href="#i-${n}"/></svg>`;
 const pad = n => String(n).padStart(2, '0');
 const isoDate = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 const roDateTime = d => `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
@@ -79,6 +81,7 @@ function field(id, list, value, ph) {
     el = document.createElement('input'); el.type = 'text'; el.placeholder = ph || '';
   }
   el.value = value || '';
+  if (el.tagName === 'SELECT') { const upd = () => el.classList.toggle('empty', !el.value); upd(); el.addEventListener('change', upd); }
   box.appendChild(el);
   return el;
 }
@@ -100,7 +103,7 @@ function makeChips(id, items, selected, multi = true) {
       };
       box.appendChild(b);
     });
-    if (!st.items.length) box.innerHTML = '<span class="muted small">(lista vine din backup – ⚙️ Setări)</span>';
+    if (!st.items.length) box.innerHTML = '<span class="muted small">Lista vine din backup (Setări)</span>';
   }
   draw();
   return {
@@ -158,7 +161,7 @@ $('btnSetari').onclick = () => go('setari');
 /* ---------------- START ---------------- */
 let respStart;
 function renderStart() {
-  $('title').textContent = 'Constatări';
+  head('Constatări', 'Inspecții pe teren');
   $('cfgWarn').hidden = cfg._importat;
   const loc = field('fLocatie', cfg.locatii, ses.locatie, 'locație');
   const drawEtaj = () => {
@@ -177,7 +180,8 @@ function renderStart() {
   respStart = makeChips('fResp', cfg.responsabili || [], ses.resp);
   $('fTermenZile').value = ses.termenZile ?? 3;
   const neexp = all.filter(r => !r._meta?.exportat).length;
-  $('stat').textContent = all.length ? `${all.length} constatări pe telefon · ${neexp} neexportate` : 'Nicio constatare pe telefon încă.';
+  $('stTotal').textContent = all.length; $('stNoi').textContent = neexp;
+  $('defSum').textContent = [ses.spec, ses.tip, (ses.resp || []).join(' / ')].filter(Boolean).join(' · ') || 'Specialitate, tip, responsabil';
 }
 function readStart() {
   ses.locatie = val('fLocatie'); ses.etaj = val('fEtaj'); ses.apt = val('fApt');
@@ -196,19 +200,22 @@ $('btnLaGata').onclick = () => { readStart(); go('gata'); };
 /* ---------------- APARTAMENT ---------------- */
 function recsApt() { return all.filter(r => r.locatie === ses.locatie && r.etaj === ses.etaj && r.apt === ses.apt); }
 function itemHtml(r) {
-  const img = r.poze && r.poze[0] ? `<img src="${r.poze[0]}" alt="">` : '<div class="noimg">📝</div>';
-  const exp = r._meta?.exportat ? '<span class="badge">exportat</span>' : '';
-  return `${img}<div><div class="t">${esc(r.inc || '(fără încăpere)')}${exp}</div><div class="d">${esc(r.obs || '(fără text)')}</div>
-    <div class="m">${esc([r.tip, r.spec, (r.resp || []).join(' / '), (r.poze || []).length + ' poze'].filter(Boolean).join(' · '))}</div></div>`;
+  const n = (r.poze || []).length;
+  const img = n ? `<img class="ph" src="${r.poze[0]}" alt="">` : `<div class="ph">${icon('note')}</div>`;
+  const meta = [r.tip, r.spec, (r.resp || []).join(' / '), n ? `${n} ${n === 1 ? 'foto' : 'foto'}` : ''].filter(Boolean).map(esc).join('<span>·</span>');
+  const exp = r._meta?.exportat ? ' <span class="pill ok">exportat</span>' : '';
+  return `${img}<div class="body"><div class="room">${esc(r.inc || 'Fără încăpere')}</div>
+    <div class="d">${esc(r.obs || '(fără descriere)')}</div><div class="m">${meta}${exp}</div></div>`;
 }
 function renderApt() {
-  $('title').textContent = `${ses.locatie} · ${ses.etaj}`;
-  $('aptTitle').textContent = ses.apt;
+  head(ses.apt, `${ses.locatie} › ${ses.etaj}`);
   const list = recsApt();
-  $('aptSub').textContent = list.length ? `${list.length} constatări` : 'Nicio constatare încă';
+  $('aptCount').textContent = `${list.length} ${list.length === 1 ? 'constatare' : 'constatări'}`;
+  $('aptCount').hidden = !list.length;
+  $('aptEmpty').hidden = !!list.length;
   const box = $('aptList'); box.innerHTML = '';
   list.slice().reverse().forEach(r => {
-    const d = document.createElement('div'); d.className = 'item'; d.innerHTML = itemHtml(r);
+    const d = document.createElement('button'); d.type = 'button'; d.className = 'item'; d.innerHTML = itemHtml(r);
     d.onclick = () => openObs(r); box.appendChild(d);
   });
 }
@@ -244,13 +251,13 @@ function openObs(rec, incPrev) {
   if (curView === 'obs') renderObs(); else go('obs');
 }
 function renderObs() {
-  $('title').textContent = `${edit.apt} · ${edit.id ? 'editare' : 'constatare nouă'}`;
+  head(edit.id ? 'Editare constatare' : 'Constatare nouă', `${edit.locatie} › ${edit.etaj} › ${edit.apt}`);
   drawThumbs();
   const cam = camerePt(edit.locatie, edit.etaj, edit.apt);
   const sel = edit.inc ? edit.inc.split(',').map(s => s.trim()).filter(Boolean) : [];
   incChips = makeChips('incChips', cam, sel);
   const alte = (cfg.camere || []).filter(c => !cam.includes(c));
-  $('incAlta').innerHTML = '<option value="">+ altă încăpere…</option>' + alte.map(c => `<option>${esc(c)}</option>`).join('');
+  $('incAlta').innerHTML = '<option value="">Altă încăpere…</option>' + alte.map(c => `<option>${esc(c)}</option>`).join('');
   $('incAlta').hidden = !alte.length;
   $('txtObs').value = edit.obs || '';
   field('oSpec', specPt(edit.locatie, edit.etaj), edit.spec, 'specialitate');
@@ -258,10 +265,10 @@ function renderObs() {
   field('oPrio', cfg.prioritati, edit.prioritate, 'prioritate');
   respObs = makeChips('oResp', cfg.responsabili || [], edit.resp || []);
   $('oTermen').value = edit.termen || '';
-  $('sumObs').textContent = 'Detalii: ' + [edit.spec, edit.tip, (edit.resp || []).join(' / ')].filter(Boolean).join(' · ');
+  $('sumObs').textContent = [edit.spec, edit.tip, (edit.resp || []).join(' / ')].filter(Boolean).join(' · ');
   $('btnSterge').hidden = !edit.id;
   $('btnSalvNou').hidden = !!edit.id;
-  $('micInfo').textContent = SR ? '' : 'Dictarea din aplicație nu merge în acest browser – folosește 🎤 de pe tastatura telefonului.';
+  $('micInfo').textContent = SR ? '' : 'În acest browser folosește microfonul de pe tastatura telefonului.';
 }
 $('incAlta').onchange = e => { if (e.target.value) { incChips.add(e.target.value); e.target.value = ''; formDirty = true; } };
 $('txtObs').addEventListener('input', () => { formDirty = true; });
@@ -270,7 +277,7 @@ function drawThumbs() {
   const box = $('thumbs'); box.innerHTML = '';
   edit.poze.forEach((p, i) => {
     const d = document.createElement('div'); d.className = 'thumb';
-    d.innerHTML = `<img src="${p}" alt=""><button type="button" aria-label="Scoate poza">✕</button>`;
+    d.innerHTML = `<img src="${p}" alt=""><button type="button" aria-label="Scoate fotografia">${icon('x')}</button>`;
     d.querySelector('button').onclick = () => { edit.poze.splice(i, 1); formDirty = true; drawThumbs(); };
     box.appendChild(d);
   });
@@ -317,7 +324,7 @@ async function saveForm(siUna) {
   await reload();
   formDirty = false;
   const inc = edit.inc;
-  toast('Salvat ✓');
+  toast('Constatare salvată');
   if (siUna) openObs(null, inc); else { edit = null; history.back(); }
 }
 $('btnSalv').onclick = () => saveForm(false);
@@ -330,9 +337,9 @@ $('btnSterge').onclick = async () => {
 /* ---------------- DICTARE ---------------- */
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 let rec = null, micOn = false, micBase = '';
-function micUi() { $('btnMic').classList.toggle('on', micOn); $('btnMic').textContent = micOn ? '⏹' : '🎤'; }
+function micUi() { const b = $('btnMic'); b.classList.toggle('on', micOn); b.innerHTML = micOn ? `${icon('stop')}<span>Oprește</span>` : `${icon('mic')}<span>Dictează</span>`; }
 function startMic() {
-  if (!SR) { toast('Folosește 🎤 de pe tastatura telefonului.', 4000); $('txtObs').focus(); return; }
+  if (!SR) { toast('Folosește microfonul de pe tastatura telefonului.', 4000); $('txtObs').focus(); return; }
   const ta = $('txtObs');
   rec = new SR(); rec.lang = 'ro-RO'; rec.interimResults = true; rec.continuous = true;
   micBase = ta.value.trim() ? ta.value.trim() + ' ' : '';
@@ -366,12 +373,15 @@ function grupat(recs) {
   return g;
 }
 function renderGata() {
-  $('title').textContent = 'Gata';
+  head('Export', 'Constatări de pe acest telefon');
   const recs = recsExport();
   const g = grupat(recs);
-  let h = `<p><b>${recs.length}</b> constatări · <b>${recs.reduce((s, r) => s + (r.poze || []).length, 0)}</b> poze</p>`;
-  g.forEach((l, k) => { h += `<div class="grp">${esc(k)} <span class="muted small">(${l.length})</span></div>`; });
-  $('gataSum').innerHTML = recs.length ? h : '<p class="muted">Nimic de exportat.</p>';
+  $('gxObs').textContent = recs.length;
+  $('gxPoze').textContent = recs.reduce((s, r) => s + (r.poze || []).length, 0);
+  $('gxApt').textContent = g.size;
+  let h = '';
+  g.forEach((l, k) => { h += `<div class="grow-row"><span>${esc(k.replace(/ · /g, ' › '))}</span><span class="pill">${l.length}</span></div>`; });
+  $('gataSum').innerHTML = h || '<div class="grow-row muted">Nimic de exportat.</div>';
 }
 $('doarNoi').onchange = renderGata;
 const stamp = () => { const d = new Date(); return `${isoDate(d)}_${pad(d.getHours())}${pad(d.getMinutes())}`; };
@@ -398,7 +408,7 @@ $('btnExpApp').onclick = async () => {
   const t = new Date().toISOString();
   for (const r of recs) { r._meta = { ...(r._meta || {}), exportat: t }; await dbPut(r); }
   await reload(); renderGata();
-  toast(`Exportat ${recs.length} ✓  Acum: aplicația de verificări → „Combina backup-uri”.`, 5000);
+  toast(`Exportat: ${recs.length}. Acum în aplicația de verificări → „Combina backup-uri”.`, 5000);
 };
 $('btnExpCsv').onclick = async () => {
   const recs = recsExport();
@@ -413,7 +423,7 @@ $('btnExpPdf').onclick = () => {
   const recs = recsExport();
   if (!recs.length) { toast('Nimic de exportat.'); return; }
   const g = grupat(recs);
-  let h = `<h1>Constatări</h1><div>${esc(roDateTime(new Date()))} · ${recs.length} constatări${getUser() ? ' · ' + esc(getUser()) : ''}</div>`;
+  let h = `<h1>Raport constatări</h1><div class="sub">${esc(roDateTime(new Date()))} · ${recs.length} constatări${getUser() ? ' · ' + esc(getUser()) : ''}</div>`;
   g.forEach((l, k) => {
     h += `<h2>${esc(k)}</h2>`;
     const pe = new Map(); l.forEach(r => { const i = r.inc || '(fără încăpere)'; if (!pe.has(i)) pe.set(i, []); pe.get(i).push(r); });
@@ -433,22 +443,22 @@ $('btnStergeExp').onclick = async () => {
   if (!exp.length) { toast('Nu ai nimic exportat de șters.'); return; }
   if (!confirm(`Ștergi de pe telefon ${exp.length} constatări deja exportate?\n(Verifică întâi că au intrat în aplicația de verificări.)`)) return;
   for (const r of exp) await dbDel(r.id);
-  await reload(); renderGata(); toast('Șters ✓');
+  await reload(); renderGata(); toast('Șters');
 };
 
 /* ---------------- SETĂRI ---------------- */
 async function renderSetari() {
-  $('title').textContent = 'Setări';
+  head('Setări');
   $('inUser').value = getUser();
   $('cfgInfo').textContent = cfg._importat
-    ? `Liste importate: ${cfg.locatii.length} locații · ${Object.keys(cfg.apartamente || {}).length} etaje cu apartamente · ${(cfg.camere || []).length} încăperi · ${(cfg.responsabili || []).length} firme.`
-    : 'Nicio listă importată încă.';
+    ? `${cfg.locatii.length} locații · ${Object.keys(cfg.apartamente || {}).length} etaje · ${(cfg.camere || []).length} încăperi · ${(cfg.responsabili || []).length} firme`
+    : 'Nicio listă importată';
   let spatiu = '';
   try { const e = await navigator.storage.estimate(); spatiu = ` · spațiu folosit ~${Math.round(e.usage / 1048576)} MB`; } catch (e) { }
   $('infoApp').textContent = `Constatări v${APP_VER} · ${all.length} constatări pe telefon${spatiu}`;
 }
-$('btnSalvUser').onclick = () => {
-  const u = $('inUser').value.trim().replace(/[^A-Za-z0-9_]/g, '').slice(0, 20);
+$('inUser').onchange = () => {
+  const u = $('inUser').value.trim().toUpperCase().replace(/[^A-Z0-9_]/g, '').slice(0, 20);
   localStorage.setItem(LS.user, u); $('inUser').value = u; toast(u ? 'Nume salvat: ' + u : 'Nume șters');
 };
 $('inCfg').onchange = async e => {
@@ -460,7 +470,7 @@ $('inCfg').onchange = async e => {
     const c = {}; CFG_KEYS.forEach(k => { if (p[k] !== undefined) c[k] = p[k]; });
     localStorage.setItem(LS.cfg, JSON.stringify(c));
     cfg = loadCfg();
-    toast('Liste importate ✓', 3000); renderSetari();
+    toast('Liste importate', 3000); show(curView);
   } catch (err) { toast('Nu am putut importa: ' + err.message, 5000); }
 };
 
