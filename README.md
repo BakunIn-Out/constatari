@@ -20,7 +20,7 @@ Merge pe Android și pe iPhone, direct din browser. Se poate pune pe ecranul pri
 4. **Trimite constatările**
    - **Fișier pentru aplicația de verificări**: acolo, meniu → „Combina backup-uri”.
    - **Raport PDF** cu poze.
-   - **Tabel Excel** (CSV).
+   - **Raport Excel**: același raport, cu pozele mici în celule, filtru pe coloane și foaia „Sumar”.
 
 Constatarea începută nu se pierde dacă telefonul închide pagina (de exemplu cât e deschisă camera): o găsești la loc când revii.
 

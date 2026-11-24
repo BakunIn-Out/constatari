@@ -6,7 +6,7 @@
    Datele stau pe telefon (IndexedDB). Spre AI (doar când completează) pleacă textul + imaginile constatării
    și câteva rânduri-exemplu din backup-ul importat (ca să scrie în același stil). */
 
-const APP_VER = '0.5.4';
+const APP_VER = '0.6.0';
 // pagină veche (din cache) + cod nou -> nu pornesc pe jumătate: șterg memoria veche și redeschid curat
 if (document.documentElement.getAttribute('data-ver') !== APP_VER) {
   (window.reparaAplicatia || function () {
@@ -1202,8 +1202,8 @@ async function shareOrDownload(blob, name) {
 let exportInLucru = false;
 const unaCateUna = fn => async () => {               // (18) dublu-tap pe export = un singur fișier
   if (exportInLucru) return; exportInLucru = true;
-  ['btnExpApp', 'btnExpCsv', 'btnExpPdf'].forEach(id => { $(id).disabled = true; });
-  try { await fn(); } finally { exportInLucru = false; ['btnExpApp', 'btnExpCsv', 'btnExpPdf'].forEach(id => { $(id).disabled = false; }); }
+  ['btnExpApp', 'btnExpXlsx', 'btnExpPdf'].forEach(id => { $(id).disabled = true; });
+  try { await fn(); } finally { exportInLucru = false; ['btnExpApp', 'btnExpXlsx', 'btnExpPdf'].forEach(id => { $(id).disabled = false; }); }
 };
 $('btnExpApp').onclick = unaCateUna(async () => {
   const recs = recsExport();
@@ -1223,14 +1223,167 @@ $('btnExpApp').onclick = unaCateUna(async () => {
   renderGata();
   toast(`Trimise: ${recs.length}`, 2500);
 });
-$('btnExpCsv').onclick = unaCateUna(async () => {
+/* ---------------- RAPORT EXCEL (utilizatorul, 24.11; înlocuiește CSV-ul) ----------------
+   Același raport ca PDF-ul (aceeași ordine și numerotare), cu pozele mici în celule, filtru, foaia „Sumar”.
+   .xlsx scris direct: arhivă zip fără compresie + XML (structura copiată după un fișier openpyxl care se deschide în Excel). */
+const CRC_T = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+function crc32(u8) { let c = 0xFFFFFFFF; for (let i = 0; i < u8.length; i++) c = CRC_T[(c ^ u8[i]) & 0xFF] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; }
+function zipStocat(fisiere, tip) {                   // fisiere: [{ nume, date: Uint8Array }]
+  const enc = new TextEncoder(), parti = [], central = []; let off = 0;
+  const d = new Date(), tm = (d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1), dt = ((d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate();
+  for (const f of fisiere) {
+    const nume = enc.encode(f.nume), crc = crc32(f.date), n = f.date.length;
+    const h = new DataView(new ArrayBuffer(30));
+    h.setUint32(0, 0x04034b50, true); h.setUint16(4, 20, true); h.setUint16(10, tm, true); h.setUint16(12, dt, true);
+    h.setUint32(14, crc, true); h.setUint32(18, n, true); h.setUint32(22, n, true); h.setUint16(26, nume.length, true);
+    parti.push(h.buffer, nume, f.date);
+    const c = new DataView(new ArrayBuffer(46));
+    c.setUint32(0, 0x02014b50, true); c.setUint16(4, 20, true); c.setUint16(6, 20, true); c.setUint16(12, tm, true); c.setUint16(14, dt, true);
+    c.setUint32(16, crc, true); c.setUint32(20, n, true); c.setUint32(24, n, true); c.setUint16(28, nume.length, true); c.setUint32(42, off, true);
+    central.push(c.buffer, nume);
+    off += 30 + nume.length + n;
+  }
+  const lungC = central.reduce((x, b) => x + b.byteLength, 0), e = new DataView(new ArrayBuffer(22));
+  e.setUint32(0, 0x06054b50, true); e.setUint16(8, fisiere.length, true); e.setUint16(10, fisiere.length, true); e.setUint32(12, lungC, true); e.setUint32(16, off, true);
+  return new Blob([...parti, ...central, e.buffer], { type: tip });
+}
+const xe = v => String(v ?? '').replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]/g, '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+const colL = n => { let s = ''; while (n > 0) { const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = (n - m - 1) / 26; } return s; };
+const xS = (ref, st, v) => v === '' || v == null ? `<c r="${ref}" s="${st}"/>` : `<c r="${ref}" s="${st}" t="inlineStr"><is><t xml:space="preserve">${xe(v)}</t></is></c>`;
+const xN = (ref, st, v) => `<c r="${ref}" s="${st}"><v>${v}</v></c>`;
+const EMU = px => Math.round(px * 9525);
+const serialData = s => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s || ''); return m ? Math.round((Date.UTC(+m[1], m[2] - 1, +m[3]) - Date.UTC(1899, 11, 30)) / 864e5) : 0; };
+const XML0 = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
+const NS_X = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main', NS_R = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
+const NS_P = 'http://schemas.openxmlformats.org/package/2006/relationships';
+// stiluri (stilul echipei: Calibri 11, antet gri D9D9D9, borduri subțiri negre). Indici folosiți mai jos:
+// 1 titlu · 2 subtitlu · 3 antet · 4 text · 5 text bold · 6 centrat · 7 dată · 8-11 = 4-7 cu linie groasă sus (apartament nou) · 12 Total · 13 Total centrat
+function xlStiluri() {
+  const F = (b, sz, col) => `<font>${b ? '<b/>' : ''}<sz val="${sz}"/><color rgb="FF${col}"/><name val="Calibri"/><family val="2"/></font>`;
+  const L = (st, poz) => `<${poz} style="${st}"><color rgb="FF000000"/></${poz}>`;
+  const BRD = sus => `<border>${L('thin', 'left')}${L('thin', 'right')}${L(sus, 'top')}${L('thin', 'bottom')}<diagonal/></border>`;
+  const FILL = c => `<fill><patternFill patternType="solid"><fgColor rgb="FF${c}"/><bgColor indexed="64"/></patternFill></fill>`;
+  const AC = 'horizontal="center" vertical="center" wrapText="1"', AV = 'vertical="center" wrapText="1"';
+  const X = (num, font, fill, brd, al) => `<xf numFmtId="${num}" fontId="${font}" fillId="${fill}" borderId="${brd}" xfId="0"${num ? ' applyNumberFormat="1"' : ''}${font ? ' applyFont="1"' : ''}${fill ? ' applyFill="1"' : ''}${brd ? ' applyBorder="1"' : ''}${al ? ` applyAlignment="1"><alignment ${al}/></xf>` : '/>'}`;
+  const xfs = [X(0, 0, 0, 0), X(0, 2, 0, 0), X(0, 3, 0, 0), X(0, 1, 2, 1, AC),
+    X(0, 0, 0, 1, AV), X(0, 1, 0, 1, AV), X(0, 0, 0, 1, AC), X(164, 0, 0, 1, AC),
+    X(0, 0, 0, 2, AV), X(0, 1, 0, 2, AV), X(0, 0, 0, 2, AC), X(164, 0, 0, 2, AC),
+    X(0, 1, 3, 1, 'vertical="center"'), X(0, 1, 3, 1, AC)];
+  return XML0 + `<styleSheet xmlns="${NS_X}"><numFmts count="1"><numFmt numFmtId="164" formatCode="dd.mm.yyyy"/></numFmts>`
+    + `<fonts count="4">${F(0, 11, '000000')}${F(1, 11, '000000')}${F(1, 14, '000000')}${F(0, 11, '595959')}</fonts>`
+    + `<fills count="4"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill>${FILL('D9D9D9')}${FILL('F2F2F2')}</fills>`
+    + `<borders count="3"><border><left/><right/><top/><bottom/><diagonal/></border>${BRD('thin')}${BRD('medium')}</borders>`
+    + `<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="${xfs.length}">${xfs.join('')}</cellXfs>`
+    + `<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles><dxfs count="0"/><tableStyles count="0"/></styleSheet>`;
+}
+// poza mică pentru Excel: JPEG la dublul mărimii afișate (clară la zoom / print)
+async function miniXlsx(src, lumina) {
+  const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error('imagine')); i.src = src; });
+  const W = 112, H = 84, nw = img.naturalWidth, nh = img.naturalHeight;
+  const s = Math.min(1, 2 * W / nw, 2 * H / nh), w = Math.max(1, Math.round(nw * s)), h = Math.max(1, Math.round(nh * s));
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, w, h); g.drawImage(img, 0, 0, w, h);
+  if (lumina) lumineaza(g, w, h);
+  const u = c.toDataURL('image/jpeg', 0.75); c.width = c.height = 0;
+  const b = atob(u.slice(u.indexOf(',') + 1)), date = new Uint8Array(b.length);
+  for (let i = 0; i < b.length; i++) date[i] = b.charCodeAt(i);
+  const k = Math.min(W / nw, H / nh);
+  return { date, w: Math.max(1, Math.round(nw * k)), h: Math.max(1, Math.round(nh * k)) };
+}
+// ordinea din raport (ca la PDF): pe apartamente, apoi pe încăperi
+function ordineRaport(recs) {
+  const out = [];
+  for (const [, l] of grupat(recs)) {
+    const pe = new Map(); l.forEach(r => { const i = r.inc || 'Fără încăpere'; if (!pe.has(i)) pe.set(i, []); pe.get(i).push(r); });
+    for (const [, rs] of pe) out.push(...rs);
+  }
+  return out;
+}
+async function construiesteXlsx(recs, prog) {
+  const ord = ordineRaport(recs);
+  const PR = 3, TW = 112, TH = 84, PAD = 4;                         // 3 poze pe rând în celulă
+  const lat = [5, 12, 7, 9, 18, 44, 14.5, 19, 28, 11, 17, 17, 17];
+  const cap = ['Nr.', 'Apartament', 'Corp', 'Etaj', 'Încăpere', 'Constatare', 'Tip', 'Specialitate', 'Firmă', 'Termen', 'Poze', '', ''];
+  const R0 = 5, C0 = 2, CP = C0 + 10, ultCol = colL(CP + PR - 1), ultim = R0 + ord.length;
+  const locuri = new Map(); ord.forEach(r => { const k = `${r.apt}|${r.locatie}|${r.etaj}`; if (!locuri.has(k)) locuri.set(k, { r, n: 0 }); locuri.get(k).n++; });
+  const nPoze = ord.reduce((x, r) => x + (r.nPoze || 0), 0), azi = new Date();
+  const pl = (n, a, b) => `${n} ${n === 1 ? a : b}`;
+  const rows = [`<row r="2">${xS('B2', 1, 'Raport constatări')}</row>`,
+    `<row r="3">${xS('B3', 2, `${pad(azi.getDate())}.${pad(azi.getMonth() + 1)}.${azi.getFullYear()} · ${pl(ord.length, 'constatare', 'constatări')} · ${pl(locuri.size, 'loc', 'locuri')} · ${pl(nPoze, 'poză', 'poze')}`)}</row>`,
+    `<row r="${R0}" ht="20" customHeight="1">${cap.map((t, i) => xS(colL(C0 + i) + R0, 3, t)).join('')}</row>`];
+  const merge = [`${colL(CP)}${R0}:${ultCol}${R0}`], media = [], anc = [];
+  let apAnt = null;
+  for (let k = 0; k < ord.length; k++) {
+    const r = ord[k], row = R0 + 1 + k, key = `${r.apt}|${r.locatie}|${r.etaj}`, o = key !== apAnt ? 4 : 0; apAnt = key;
+    const pz = r.nPoze ? await dbPoze(r.id).catch(() => []) : [];
+    const firma = (r.resp || []).join(', ');
+    const linT = Math.max(1, ...[[r.inc, 18], [r.obs, 44], [r.spec, 19], [firma, 28]].map(([v, w]) => Math.ceil(String(v || '').length / Math.floor(w * 0.95))));
+    const ht = Math.max(Math.ceil(pz.length / PR) * (TH + PAD) * 0.75 + 4, linT * 15 + 8, 24);
+    const L = i => colL(C0 + i) + row, ser = serialData(r.termen);
+    let c = xN(L(0), 6 + o, k + 1) + xS(L(1), 5 + o, r.apt) + xS(L(2), 6 + o, r.locatie) + xS(L(3), 6 + o, r.etaj) + xS(L(4), 4 + o, r.inc || '')
+      + xS(L(5), 5 + o, r.obs || '') + xS(L(6), 4 + o, r.tip || '') + xS(L(7), 4 + o, r.spec || '') + xS(L(8), 4 + o, firma)
+      + (ser ? xN(L(9), 7 + o, ser) : xS(L(9), 7 + o, ''));
+    for (let j = 0; j < PR; j++) c += xS(colL(CP + j) + row, 4 + o, '');
+    rows.push(`<row r="${row}" ht="${ht.toFixed(2)}" customHeight="1">${c}</row>`);
+    merge.push(`${colL(CP)}${row}:${ultCol}${row}`);
+    for (let j = 0; j < pz.length; j++) {
+      let m; try { m = await miniXlsx(pz[j], !isGif(pz[j])); } catch (e) { continue; }
+      media.push(m.date); const id = media.length;
+      const offX = PAD + Math.floor((TW - m.w) / 2), offY = PAD / 2 + Math.floor(j / PR) * (TH + PAD);
+      anc.push(`<xdr:oneCellAnchor><xdr:from><xdr:col>${CP - 1 + (j % PR)}</xdr:col><xdr:colOff>${EMU(offX)}</xdr:colOff><xdr:row>${row - 1}</xdr:row><xdr:rowOff>${EMU(offY)}</xdr:rowOff></xdr:from>`
+        + `<xdr:ext cx="${EMU(m.w)}" cy="${EMU(m.h)}"/><xdr:pic><xdr:nvPicPr><xdr:cNvPr id="${id + 1}" name="Poza ${id}"/><xdr:cNvPicPr><a:picLocks noChangeAspect="1"/></xdr:cNvPicPr></xdr:nvPicPr>`
+        + `<xdr:blipFill><a:blip r:embed="rId${id}"/><a:stretch><a:fillRect/></a:stretch></xdr:blipFill><xdr:spPr><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></xdr:spPr></xdr:pic><xdr:clientData/></xdr:oneCellAnchor>`);
+    }
+    if (k % 5 === 4) { prog(`Pregătesc Excel-ul… ${k + 1}/${ord.length}`); await pauza(0); }
+  }
+  const cols = '<col min="1" max="1" width="2" customWidth="1"/>' + lat.map((w, i) => `<col min="${C0 + i}" max="${C0 + i}" width="${w}" customWidth="1"/>`).join('');
+  const foaie1 = XML0 + `<worksheet xmlns="${NS_X}" xmlns:r="${NS_R}"><sheetPr><pageSetUpPr fitToPage="1"/></sheetPr><dimension ref="B2:${ultCol}${ultim}"/>`
+    + `<sheetViews><sheetView showGridLines="0" workbookViewId="0"><pane ySplit="${R0}" topLeftCell="A${R0 + 1}" activePane="bottomLeft" state="frozen"/><selection pane="bottomLeft" activeCell="B${R0 + 1}" sqref="B${R0 + 1}"/></sheetView></sheetViews>`
+    + `<sheetFormatPr defaultRowHeight="15"/><cols>${cols}</cols><sheetData>${rows.join('')}</sheetData><autoFilter ref="B${R0}:${colL(CP - 1)}${ultim}"/>`
+    + `<mergeCells count="${merge.length}">${merge.map(m => `<mergeCell ref="${m}"/>`).join('')}</mergeCells><printOptions horizontalCentered="1"/>`
+    + `<pageMargins left="0.4" right="0.4" top="0.5" bottom="0.5" header="0.3" footer="0.3"/><pageSetup paperSize="9" orientation="landscape" fitToWidth="1" fitToHeight="0"/>`
+    + `${media.length ? '<drawing r:id="rId1"/>' : ''}</worksheet>`;
+  // Sumar: ca tabelul din PDF
+  const sr = [`<row r="2">${xS('B2', 1, 'Raport constatări - sumar')}</row>`, `<row r="4">${['Apartament', 'Corp', 'Etaj', 'Constatări'].map((t, i) => xS(colL(2 + i) + 4, 3, t)).join('')}</row>`];
+  let n = 5; for (const { r, n: c } of locuri.values()) { sr.push(`<row r="${n}">${xS('B' + n, 5, r.apt)}${xS('C' + n, 6, r.locatie)}${xS('D' + n, 6, r.etaj)}${xN('E' + n, 6, c)}</row>`); n++; }
+  sr.push(`<row r="${n}">${xS('B' + n, 12, 'Total')}${xS('C' + n, 13, '')}${xS('D' + n, 13, '')}<c r="E${n}" s="13"><f>SUM(E5:E${n - 1})</f><v>${ord.length}</v></c></row>`);
+  const foaie2 = XML0 + `<worksheet xmlns="${NS_X}" xmlns:r="${NS_R}"><dimension ref="B2:E${n}"/><sheetViews><sheetView showGridLines="0" workbookViewId="0"/></sheetViews><sheetFormatPr defaultRowHeight="15"/>`
+    + `<cols><col min="1" max="1" width="2" customWidth="1"/><col min="2" max="2" width="13" customWidth="1"/><col min="3" max="3" width="8" customWidth="1"/><col min="4" max="4" width="10" customWidth="1"/><col min="5" max="5" width="12" customWidth="1"/></cols>`
+    + `<sheetData>${sr.join('')}</sheetData><pageMargins left="0.7" right="0.7" top="0.75" bottom="0.75" header="0.3" footer="0.3"/><pageSetup paperSize="9"/></worksheet>`;
+  const nume1 = 'Constatări';
+  const wb = XML0 + `<workbook xmlns="${NS_X}" xmlns:r="${NS_R}"><bookViews><workbookView activeTab="0"/></bookViews><sheets><sheet name="${nume1}" sheetId="1" r:id="rId1"/><sheet name="Sumar" sheetId="2" r:id="rId2"/></sheets>`
+    + `<definedNames><definedName name="_xlnm._FilterDatabase" localSheetId="0" hidden="1">'${nume1}'!$B$${R0}:$${colL(CP - 1)}$${ultim}</definedName>`
+    + `<definedName name="_xlnm.Print_Titles" localSheetId="0">'${nume1}'!$${R0}:$${R0}</definedName><definedName name="_xlnm.Print_Area" localSheetId="0">'${nume1}'!$B$2:$${ultCol}$${ultim}</definedName></definedNames>`
+    + `<calcPr calcId="191029" fullCalcOnLoad="1"/></workbook>`;
+  const rel = (id, tip, tinta) => `<Relationship Id="${id}" Type="${NS_R}/${tip}" Target="${tinta}"/>`;
+  const enc = new TextEncoder(), T = (nume, text) => ({ nume, date: enc.encode(text) });
+  const fis = [
+    T('[Content_Types].xml', XML0 + `<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="jpeg" ContentType="image/jpeg"/>`
+      + `<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>`
+      + `<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/worksheets/sheet2.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`
+      + (media.length ? `<Override PartName="/xl/drawings/drawing1.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/>` : '') + `</Types>`),
+    T('_rels/.rels', XML0 + `<Relationships xmlns="${NS_P}">${rel('rId1', 'officeDocument', 'xl/workbook.xml')}</Relationships>`),
+    T('xl/workbook.xml', wb),
+    T('xl/_rels/workbook.xml.rels', XML0 + `<Relationships xmlns="${NS_P}">${rel('rId1', 'worksheet', 'worksheets/sheet1.xml')}${rel('rId2', 'worksheet', 'worksheets/sheet2.xml')}${rel('rId3', 'styles', 'styles.xml')}</Relationships>`),
+    T('xl/styles.xml', xlStiluri()),
+    T('xl/worksheets/sheet1.xml', foaie1),
+    T('xl/worksheets/sheet2.xml', foaie2)];
+  if (media.length) {
+    fis.push(T('xl/worksheets/_rels/sheet1.xml.rels', XML0 + `<Relationships xmlns="${NS_P}">${rel('rId1', 'drawing', '../drawings/drawing1.xml')}</Relationships>`));
+    fis.push(T('xl/drawings/drawing1.xml', XML0 + `<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="${NS_R}">${anc.join('')}</xdr:wsDr>`));
+    fis.push(T('xl/drawings/_rels/drawing1.xml.rels', XML0 + `<Relationships xmlns="${NS_P}">${media.map((_, i) => rel('rId' + (i + 1), 'image', `../media/image${i + 1}.jpeg`)).join('')}</Relationships>`));
+    media.forEach((d, i) => fis.push({ nume: `xl/media/image${i + 1}.jpeg`, date: d }));
+  }
+  return zipStocat(fis, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+}
+$('btnExpXlsx').onclick = unaCateUna(async () => {
   const recs = recsExport();
   if (!recs.length) { toast('Nimic de trimis'); return; }
-  const cols = ['Locatie', 'Etaj', 'Apartament', 'Incapere', 'Observatie', 'Specialitate', 'Tip', 'Prioritate', 'Responsabil', 'Data', 'Termen', 'Nr imagini', 'Text dictat', 'Id'];
-  const q = v => { const s = String(v ?? ''); return /[;"\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
-  const rows = recs.map(r => [r.locatie, r.etaj, r.apt, r.inc, r.obs, r.spec, r.tip, r.prioritate, (r.resp || []).join(' / '), r.dataObs, r.termen, r.nPoze || 0, r._meta?.dictat || '', r.id].map(q).join(';'));
-  const blob = new Blob(['\ufeff' + [cols.join(';')].concat(rows).join('\r\n')], { type: 'text/csv' });
-  await shareOrDownload(blob, `constatari_${stamp()}.csv`);
+  const prog = m => toast(m, 120000);
+  prog('Pregătesc Excel-ul…');
+  let blob; try { blob = await construiesteXlsx(recs, prog); } catch (e) { toast('Nu am putut face Excel-ul: ' + e.message, 4000); return; }
+  clearTimeout(toastT); $('toast').hidden = true;
+  await shareOrDownload(blob, `raport_constatari_${stamp()}.xlsx`);
 });
 // raportul (utilizatorul, 24.11): textele EXACT cum au fost scrise, fără nume, fără rezumat, fără subsol; tabel doar Loc + Constatări
 $('btnExpPdf').onclick = unaCateUna(async () => {
