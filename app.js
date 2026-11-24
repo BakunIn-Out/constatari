@@ -6,7 +6,7 @@
    Datele stau pe telefon (IndexedDB). Spre AI (doar când completează) pleacă textul + imaginile constatării
    și câteva rânduri-exemplu din backup-ul importat (ca să scrie în același stil). */
 
-const APP_VER = '0.5.0';
+const APP_VER = '0.5.1';
 // pagină veche (din cache) + cod nou -> nu pornesc pe jumătate: șterg memoria veche și redeschid curat
 if (document.documentElement.getAttribute('data-ver') !== APP_VER) {
   (window.reparaAplicatia || function () {
@@ -571,14 +571,25 @@ function renderObs() {
   $('txtObs').classList.remove('flash');
   micUi(); aiUi(); updSalv();
 }
+let tipChips = null, prioChips = null;
 function drawDetalii() {
-  field('oSpec', specPt(edit.locatie, edit.etaj), edit.spec, 'specialitate', () => { atins.spec = true; firmeToate = false; deseneazaFirme(); onFormChange(); });
-  field('oTip', cfg.tipuri, edit.tip, 'tip', () => { atins.tip = true; onFormChange(); });
-  field('oPrio', cfg.prioritati, edit.prioritate, 'prioritate', onFormChange);
+  field('oSpec', specPt(edit.locatie, edit.etaj), edit.spec, 'alege', () => { atins.spec = true; firmeToate = false; deseneazaFirme(); onFormChange(); });
+  tipChips = makeChips('oTip', cfg.tipuri || [], edit.tip ? [edit.tip] : [], false, () => { atins.tip = true; onFormChange(); });
+  prioChips = makeChips('oPrio', cfg.prioritati || [], edit.prioritate ? [edit.prioritate] : [], false, onFormChange);
   firmeToate = false;
   deseneazaFirme(edit.resp || []);
   $('oTermen').value = edit.termen || '';
+  deseneazaTermen();
   updSumObs();
+}
+function deseneazaTermen() {
+  const box = $('oTermenC'); box.innerHTML = '';
+  [3, 7, 14].forEach(n => {
+    const d = addDays(n), b = document.createElement('button'); b.type = 'button';
+    b.className = 'chip' + ($('oTermen').value === d ? ' on' : ''); b.textContent = `${n} zile`;
+    b.onclick = () => { $('oTermen').value = d; deseneazaTermen(); onFormChange(); };
+    box.appendChild(b);
+  });
 }
 // Firma: după specialitate, întâi firmele care o fac (din constatările de până acum); restul sub „Alte firme”
 let firmeToate = false;
@@ -602,9 +613,59 @@ function deseneazaFirme(alese) {
   b.onclick = () => { firmeToate = true; deseneazaFirme(); };
 }
 function updSumObs() {
-  $('sumObs').textContent = [val('oSpec'), val('oTip'), respObs ? respObs.get().join(' / ') : ''].filter(Boolean).join(' · ') || 'specialitate, tip, firmă';
+  $('sumObs').textContent = [val('oSpec'), tipChips ? tipChips.get()[0] : '', respObs ? respObs.get().join(' / ') : ''].filter(Boolean).join(' · ') || 'specialitate, firmă';
 }
-function onFormChange() { formDirty = true; updSumObs(); saveDraftSoon(); aiUi(); updSalv(); }
+function onFormChange() { formDirty = true; updSumObs(); saveDraftSoon(); aiUi(); updSalv(); updSugestie(); }
+// întâi elementul (ușă, geam, priză, gresie…), apoi suprafețele, la final curățenia
+const REGULI_SPEC = [
+  ['Usa de acces', /\busa (de |de la )?(acces|intrare|apartament)|\bvizor|\bcaptuseal|\busa metalic/],
+  ['Tamplarie PVC', /tamplari|\bgeam|fereastr|\bglaf|\bpvc\b|plasa (de )?tantar|usa (de )?balcon|\bgarnitur/],
+  ['Placari ceramice', /gresi|faiant|ceramic|\bplac(a|i|ile|ilor)\b|\bchit|\brost|distantier/],
+  ['Obiecte sanitare', /\bcad(a|ei)\b|lavoar|\bwc\b|vas (de )?toaleta|\bbaterie|\bsifon|cabina (de )?dus|panou (de )?dus/],
+  ['Parchet', /parchet|\bplint|\blaminat/],
+  ['Aparataj electrice', /\bpriz|intrerupat|ornament|\bdoz(a|e)\b/],
+  ['Instalatii electrice', /\btablou|\bcablu|corp (de )?iluminat|\bspot|\bsonerie|\bbec\b/],
+  ['Interfonie', /interfon/],
+  ['Instalatii gaz', /\bgaz|regulator/],
+  ['Instalatii HVAC', /calorifer|radiator|\bcentral(a|ei)\b|\bct\b|ventila|\bclima/],
+  ['Instalatii sanitare', /\bteav|scurger|pierdere (de )?apa|infiltra|\bcoloan|apometru|robinet/],
+  ['Confectii metalice', /balustrad|\bparapet|\bmetalic/],
+  ['Usi de interior', /\busa\b|\busi(le)?\b|\busii\b|\btoc(ul|uri)?\b|\bbalama|\bclant|\bmaner|\bcant(ul)?\b|\bopritor|\bchei/],
+  ['Glet', /\bglet|slefui|\bfisur|\bcoltar|\bintrados|\bolnit|\bperete|\bpereti|\btavan|\bspalet/],
+  ['Tencuiala', /tencuial/],
+  ['Zugraveli lavabile', /zugrav|lavabil|\bvopse|\bretus|\bamors/],
+  ['Curatenie', /curat|murdar|\bpraf|mizerie|\bfoli|infoliat|\bbanda/],
+];
+function sugestieSpec(text, inc) {
+  const t = cheie(text); if (t.length < 4 || !edit) return '';
+  const lista = specPt(edit.locatie, edit.etaj);
+  const gaseste = s => lista.find(x => cheie(x) === cheie(s)) || '';
+  for (const [sp, rx] of REGULI_SPEC) {
+    if (!rx.test(t)) continue;
+    if (sp === 'Usi de interior' && /acces|intrare/.test(cheie(inc || '')) && gaseste('Usa de acces')) return gaseste('Usa de acces');
+    const g = gaseste(sp); if (g) return g;
+  }
+  return '';
+}
+let sugT;
+function updSugestie() {
+  clearTimeout(sugT);
+  sugT = setTimeout(() => {
+    const bar = $('sugBar'); if (!edit || curView !== 'obs') { bar.hidden = true; return; }
+    const sp = sugestieSpec($('txtObs').value, incChips ? incChips.get()[0] : '');
+    const firma = sp ? (firmeSugerate(sp)[0] || '') : '';
+    const alese = respObs ? respObs.get() : [];
+    if (!sp || (sp === val('oSpec') && (!firma || alese.length))) { bar.hidden = true; return; }
+    bar.hidden = false;
+    bar.innerHTML = `${icon('spark')}<span>${esc([sp, firma].filter(Boolean).join(' · '))}</span><button type="button" id="sugPune" class="linkbtn">Pune</button>`;
+    $('sugPune').onclick = () => {
+      readForm(); edit.spec = sp; atins.spec = true;
+      if (firma && !edit.resp.length) edit.resp = [firma];
+      drawDetalii(); bar.hidden = true; onFormChange();
+      const el = $('detObs').querySelector('summary'); el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash');
+    };
+  }, 350);
+}
 // cât nu e aleasă încăperea, butonul de jos spune asta (altfel omul apasă Salvează și nu înțelege de ce nu merge)
 function updSalv() {
   const faraInc = !!incChips && !incChips.get().length;
@@ -618,7 +679,7 @@ $('txtObs').addEventListener('input', () => {
   creste(); onFormChange();
 });
 function creste() { const t = $('txtObs'); t.style.height = 'auto'; t.style.height = Math.min(t.scrollHeight + 2, 280) + 'px'; }
-$('oTermen').addEventListener('change', onFormChange);
+$('oTermen').addEventListener('change', () => { deseneazaTermen(); onFormChange(); });
 
 function drawThumbs() {
   const box = $('thumbs'); box.innerHTML = '';
@@ -774,7 +835,9 @@ function readForm() {
   if (incChips) edit.inc = incChips.get().join(', ');
   edit.obs = $('txtObs').value.trim().replace(/\s+/g, ' ');
   if (edit.obs) edit.obs = edit.obs[0].toUpperCase() + edit.obs.slice(1);
-  edit.spec = val('oSpec'); edit.tip = val('oTip'); edit.prioritate = val('oPrio');
+  edit.spec = val('oSpec');
+  if (tipChips) edit.tip = tipChips.get()[0] || '';
+  if (prioChips) edit.prioritate = prioChips.get()[0] || '';
   if (respObs) edit.resp = respObs.get();
   edit.termen = $('oTermen').value || '';
 }
@@ -1008,8 +1071,8 @@ async function imaginiPentruAi(ed) {
   }
   return out.slice(0, 4);
 }
-async function aiFetch(path, opt) {
-  const ctrl = new AbortController(); const to = setTimeout(() => ctrl.abort(), AI.timeout);
+async function aiFetch(path, opt, ms) {
+  const ctrl = new AbortController(); const to = setTimeout(() => ctrl.abort(), ms || AI.timeout);
   try {                                              // limita de timp ține și pentru citirea răspunsului (semnal slab)
     let res;
     try { res = await fetch(AI.url + path, { ...opt, signal: ctrl.signal, headers: { ...(opt.headers || {}), Authorization: 'Bearer ' + aiKey() } }); }
@@ -1143,26 +1206,89 @@ $('btnExpCsv').onclick = unaCateUna(async () => {
   const blob = new Blob(['\ufeff' + [cols.join(';')].concat(rows).join('\r\n')], { type: 'text/csv' });
   await shareOrDownload(blob, `constatari_${stamp()}.csv`);
 });
+const PROMPT_TEXTE = `Primesti constatari de pe un santier (verificarea apartamentelor noi inainte de predare). Pentru fiecare, rescrii "text" ca o propozitie scurta, clara, profesionala, in limba romana CU diacritice, prima litera mare, fara punct la final.
+OBLIGATORIU cu diacritice (ă, â, î, ș, ț), chiar daca textul primit nu le are. Exemplu: "Usa dormitor nu se inchide" -> "Ușa dormitorului nu se închide".
+Pastrezi exact sensul. NU adaugi si NU scoti probleme, NU inventezi detalii. "de reglat" ramane "de reglat" (= trebuie reglat), NU "dereglat".
+Termeni de santier: spalet, intrados, coltar, olnita, aparataj, CT, glet, lavabil, chit, plinta, toc, glaf, înfoliat (cu î), de reglat, tamplarie.
+Raspunzi DOAR cu JSON: {"texte":[{"n":1,"text":"..."}]}`;
+const PROMPT_REZUMAT = `Primesti lista constatarilor dintr-o verificare de apartamente (santier). Scrii in limba romana CU diacritice, sobru, doar ce reiese din lista:
+- "pe_scurt": 3-6 puncte scurte: problemele principale si cele care se repeta (cate apartamente / constatari), pe firme daca reiese;
+- "apartamente": pentru fiecare apartament ("ap" exact ca in lista), un rand de rezumat de maximum 18 cuvinte.
+Raspunzi DOAR cu JSON: {"pe_scurt":["..."],"apartamente":[{"ap":"...","rezumat":"..."}]}`;
+function jsonObj(x) {
+  if (typeof x !== 'string') return null;
+  try { return JSON.parse(x); } catch (e) { }
+  const m = x.match(/\{[\s\S]*\}/); if (m) { try { return JSON.parse(m[0]); } catch (e) { } }
+  return null;
+}
+async function cerereAi(prompt, date, ms) {
+  const d = await aiFetch('/chat/completions', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model: AI.model, temperature: 0.2, response_format: { type: 'json_object' }, thinking: { type: 'disabled' }, max_tokens: 6000,
+      messages: [{ role: 'system', content: prompt }, { role: 'user', content: JSON.stringify(date) }] })
+  }, ms);
+  const o = jsonObj(d.choices && d.choices[0] && d.choices[0].message && d.choices[0].message.content);
+  if (!o) throw new Error('răspuns neclar');
+  return o;
+}
+const cheieAp = r => `${r.apt} · ${r.locatie} · ${r.etaj}`;
+async function aiRaport(recs, prog) {
+  const items = recs.map((r, i) => ({ n: i + 1, ap: cheieAp(r), inc: r.inc, text: r.obs || '', spec: r.spec, firma: (r.resp || []).join(', ') }));
+  const loturi = []; for (let i = 0; i < items.length; i += 40) loturi.push(items.slice(i, i + 40));
+  const texte = {}; let gata = 0;
+  prog('Formulez textele…');
+  await Promise.all(loturi.map(async lot => {
+    const o = await cerereAi(PROMPT_TEXTE, lot.map(x => ({ n: x.n, text: x.text })), 90000);
+    (o.texte || []).forEach(x => { if (x && x.n && typeof x.text === 'string' && x.text.trim()) texte[x.n] = x.text.trim(); });
+    gata += lot.length; prog(`Formulez textele… ${gata}/${items.length}`);
+  }));
+  prog('Scriu rezumatul…');
+  const o2 = await cerereAi(PROMPT_REZUMAT, items.map(x => ({ ap: x.ap, incapere: x.inc, text: texte[x.n] || x.text, specialitate: x.spec, firma: x.firma })), 90000);
+  return { texte, peScurt: Array.isArray(o2.pe_scurt) ? o2.pe_scurt.filter(x => typeof x === 'string') : [],
+    peAp: Object.fromEntries((o2.apartamente || []).filter(a => a && a.ap).map(a => [a.ap, String(a.rezumat || '')])) };
+}
 $('btnExpPdf').onclick = unaCateUna(async () => {
   const recs = recsExport();
   if (!recs.length) { toast('Nimic de trimis'); return; }
-  toast('Pregătesc…', 2000);
+  const prog = m => toast(m, 120000);
+  let ai = null;
+  if (aiOn()) { try { ai = await aiRaport(recs, prog); } catch (e) { toast('Fără AI: ' + e.message, 2500); await pauza(800); } }
+  prog('Pun pozele…');
   const g = grupat(recs);
-  let h = `<h1>Raport constatări</h1><div class="sub">${esc(roDateTime(new Date()))} · ${recs.length} constatări${getUser() ? ' · ' + esc(getUser()) : ''}</div>`;
-  for (const [k, l] of g) {
-    h += `<h2>${esc(k)}</h2>`;
-    const pe = new Map(); l.forEach(r => { const i = r.inc || '(fără încăpere)'; if (!pe.has(i)) pe.set(i, []); pe.get(i).push(r); });
+  const nPoze = recs.reduce((x, r) => x + (r.nPoze || 0), 0);
+  const pl = (n, a, b) => `${n} ${n === 1 ? a : b}`;
+  let h = `<div class="rh"><div class="rt">Raport constatări</div><div class="rs">${esc(roDateTime(new Date()))}${getUser() ? ' · ' + esc(getUser()) : ''} · ${pl(recs.length, 'constatare', 'constatări')} · ${pl(g.size, 'loc', 'locuri')} · ${pl(nPoze, 'poză', 'poze')}</div></div>`;
+  if (ai && ai.peScurt.length) h += `<section class="pescurt"><h2>Pe scurt</h2><ul>${ai.peScurt.map(x => `<li>${esc(x)}</li>`).join('')}</ul></section>`;
+  h += `<table class="rtab"><thead><tr><th>Loc</th><th>Constatări</th><th>Firme</th></tr></thead><tbody>`;
+  for (const [, l] of g) {
+    const firme = [...new Set(l.flatMap(r => r.resp || []))];
+    h += `<tr><td><b>${esc(l[0].apt)}</b> · ${esc(l[0].locatie)} · ${esc(l[0].etaj)}</td><td class="n">${l.length}</td><td>${esc(firme.join(', ') || '-')}</td></tr>`;
+  }
+  h += `</tbody></table>`;
+  let nr = 0;
+  for (const [, l] of g) {
+    const r0 = l[0];
+    h += `<section class="rap-ap"><h2>${esc(r0.apt)}<span>${esc(r0.locatie)} · ${esc(r0.etaj)}</span></h2>`;
+    const rez = ai && ai.peAp[cheieAp(r0)]; if (rez) h += `<p class="rez">${esc(rez)}</p>`;
+    const pe = new Map(); l.forEach(r => { const i = r.inc || 'Fără încăpere'; if (!pe.has(i)) pe.set(i, []); pe.get(i).push(r); });
     for (const [inc, rs] of pe) {
-      h += `<h3>${esc(inc)}:</h3>`;
+      h += `<h3>${esc(inc)}</h3>`;
       for (const r of rs) {
+        nr++;
+        const idx = recs.indexOf(r) + 1;
+        const text = (ai && ai.texte[idx]) || r.obs || '';
         const pz = r.nPoze ? await dbPoze(r.id).catch(() => []) : [];
         let fig = '';
-        for (const x of pz) { let m = ''; try { m = await imgToJpeg(x, 800, 0.7); } catch (e) { continue; } fig += `<figure><img src="${m}" alt="">${isGif(x) ? '<figcaption>cadru din video</figcaption>' : ''}</figure>`; }
-        h += `<div class="o"><div>- ${esc(r.obs || '')}</div><div class="m">${esc([r.tip, r.spec, (r.resp || []).join(' / '), r.termen ? 'termen ' + r.termen : ''].filter(Boolean).join(' · '))}</div>` + fig + '</div>';
+        for (const x of pz) { let m = ''; try { m = await imgToJpeg(x, 900, 0.72); } catch (e) { continue; } fig += `<figure><img src="${m}" alt="">${isGif(x) ? '<figcaption>cadru din video</figcaption>' : ''}</figure>`; }
+        const meta = [r.tip, r.spec, (r.resp || []).join(', '), r.termen ? 'termen ' + r.termen.split('-').reverse().join('.') : ''].filter(Boolean).join(' · ');
+        h += `<div class="o"><div class="ot"><span class="nr">${nr}.</span>${esc(text)}</div>${meta ? `<div class="m">${esc(meta)}</div>` : ''}${fig ? `<div class="ph">${fig}</div>` : ''}</div>`;
       }
     }
+    h += `</section>`;
   }
+  h += `<div class="rfoot">Constatări v${esc(APP_VER)}${ai ? ' · texte formulate cu AI' : ''}</div>`;
   $('print').innerHTML = h;
+  clearTimeout(toastT); $('toast').hidden = true;
   for (const i of $('print').querySelectorAll('img')) { try { if (i.decode) await i.decode(); } catch (e) { } }
   window.print();
 });

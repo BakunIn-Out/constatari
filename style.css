@@ -240,6 +240,19 @@ button.alta { display: flex; align-items: center; gap: 10px; width: 100%; min-he
 .shot:active { background: #fff; transform: scale(.96); }
 .camgata { justify-self: end; min-height: 52px; padding: 0 18px; border: 0; border-radius: 999px; background: #fff; color: var(--ink); font-size: 18px; font-weight: 750; cursor: pointer; }
 
+/* Detalii: blocuri aerisite, butoane mari */
+.detc { padding: 4px 16px 18px; }
+.dl { margin: 18px 0 10px; font-size: 16px; font-weight: 700; color: var(--ink2); }
+.fspec select, .fspec button.pick { width: 100%; min-height: 56px; padding: 0 44px 0 16px !important; border: 1.5px solid var(--line2); border-radius: 14px;
+  font-size: 18px; font-weight: 600; text-align: left; text-align-last: left; color: var(--ink); background-color: var(--surface); background-position: right 14px center; }
+.fspec .empty { color: var(--faint); font-weight: 500; }
+input.data { width: 100%; min-height: 52px; margin-top: 10px; padding: 0 14px; font-size: 17px; border: 1.5px solid var(--line2); border-radius: 14px; background: var(--surface); }
+/* sugestia: specialitate + firmă din ce ai scris */
+.sugbar { display: flex; align-items: center; gap: 10px; margin-top: 10px; padding: 10px 14px; border-radius: 14px; background: #eef6ee; color: #14532d; font-size: 16px; font-weight: 600; }
+.sugbar > span { flex: 1; min-width: 0; }
+.sugbar svg { width: 20px; height: 20px; }
+.sugbar .linkbtn { margin: -6px 0; color: #15803d; }
+
 /* constatările mele */
 .filtre { margin-top: 14px; }
 .grup { width: 100%; display: flex; align-items: center; gap: 10px; margin: 22px 0 0; padding: 12px 14px; border: 0; border-radius: 14px;
@@ -265,14 +278,30 @@ button.alta { display: flex; align-items: center; gap: 10px; width: 100%; min-he
   body { background: #fff; }
   .appbar, main, .toast, .actionbar, .sheet { display: none !important; }
   .print { display: block; color: #000; font: 10.5pt/1.4 Arial, sans-serif; }
-  .print h1 { font-size: 16pt; margin: 0 0 2px; }
-  .print .sub { color: #555; margin-bottom: 10px; }
-  .print h2 { font-size: 12.5pt; margin: 16px 0 6px; padding-bottom: 3px; border-bottom: 1.5px solid #222; page-break-after: avoid; }
-  .print h3 { font-size: 11pt; margin: 10px 0 2px; page-break-after: avoid; }
-  .print .o { margin: 2px 0 10px; page-break-inside: avoid; }
-  .print .o .m { color: #555; font-size: 9pt; }
-  .print .o figure { display: inline-block; width: 48%; margin: 4px 1% 0 0; vertical-align: top; }
-  .print .o img { width: 100%; max-height: 8cm; object-fit: contain; border: 1px solid #ddd; }
-  .print .o figcaption { font-size: 8pt; color: #555; }
+  .print { font: 10pt/1.45 Arial, Helvetica, sans-serif; color: #1f2937; }
+  .rh { border-bottom: 3px solid #0b5cad; padding-bottom: 8px; margin-bottom: 14px; }
+  .rh .rt { font-size: 20pt; font-weight: 700; color: #0f172a; letter-spacing: -.01em; }
+  .rh .rs { margin-top: 3px; color: #475569; font-size: 10pt; }
+  .pescurt { margin: 0 0 14px; padding: 10px 14px; background: #eef4fb; border-left: 4px solid #0b5cad; border-radius: 4px; page-break-inside: avoid; }
+  .pescurt h2 { margin: 0 0 4px; font-size: 12pt; color: #0b5cad; border: 0; padding: 0; }
+  .pescurt ul { margin: 0; padding-left: 16px; } .pescurt li { margin: 2px 0; }
+  .rtab { width: 100%; border-collapse: collapse; margin: 4px 0 16px; font-size: 9.5pt; page-break-inside: avoid; }
+  .rtab th { text-align: left; background: #f1f5f9; border-bottom: 1.5px solid #94a3b8; padding: 5px 8px; }
+  .rtab td { border-bottom: 1px solid #e2e8f0; padding: 5px 8px; vertical-align: top; }
+  .rtab td.n { text-align: right; font-weight: 700; width: 18mm; }
+  .rap-ap { margin-top: 14px; }
+  .rap-ap > h2 { margin: 0; padding: 6px 10px; font-size: 13pt; color: #fff; background: #0b5cad; border-radius: 4px; page-break-after: avoid; }
+  .rap-ap > h2 span { font-weight: 400; font-size: 10pt; opacity: .9; margin-left: 6px; }
+  .rap-ap > .rez { margin: 6px 2px 4px; color: #334155; font-style: italic; page-break-after: avoid; }
+  .rap-ap h3 { margin: 10px 0 4px; font-size: 10.5pt; color: #0b5cad; text-transform: uppercase; letter-spacing: .04em; page-break-after: avoid; }
+  .o { margin: 0 0 10px; padding: 7px 9px; border: 1px solid #e2e8f0; border-radius: 5px; page-break-inside: avoid; }
+  .o .ot { font-size: 10.5pt; font-weight: 600; color: #0f172a; }
+  .o .ot .nr { display: inline-block; min-width: 6mm; color: #0b5cad; }
+  .o .m { margin-top: 2px; color: #64748b; font-size: 8.5pt; }
+  .o .ph { display: grid; grid-template-columns: 1fr 1fr; gap: 3mm; margin-top: 5px; }
+  .o figure { margin: 0; }
+  .o img { display: block; width: 100%; height: 6.2cm; object-fit: contain; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 3px; }
+  .o figcaption { font-size: 7.5pt; color: #64748b; margin-top: 1px; }
+  .rfoot { margin-top: 16px; padding-top: 6px; border-top: 1px solid #e2e8f0; color: #94a3b8; font-size: 8pt; text-align: right; }
   @page { size: A4; margin: 12mm; }
 }
