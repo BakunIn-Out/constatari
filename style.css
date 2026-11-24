@@ -223,6 +223,10 @@ button.alta { display: flex; align-items: center; gap: 10px; width: 100%; min-he
 /* cât se pregătește video-ul / se salvează: nimic nou de adăugat */
 .mediabusy .galerie, .salvez .mbtn, .salvez .galerie, .salvez #btnMic, .salvez .chip, .salvez button.alta { opacity: .45; pointer-events: none; }
 
+/* firma: sugerate pentru specialitate, apoi „Alte firme” */
+.sug { margin: -2px 0 10px; font-size: 15px; color: var(--muted); }
+#firmeAlte { margin-top: 6px; }
+
 /* constatările mele */
 .filtre { margin-top: 14px; }
 .grup { width: 100%; display: flex; align-items: center; gap: 10px; margin: 22px 0 0; padding: 12px 14px; border: 0; border-radius: 14px;

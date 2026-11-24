@@ -6,7 +6,7 @@
    Datele stau pe telefon (IndexedDB). Spre AI (doar când completează) pleacă textul + imaginile constatării
    și câteva rânduri-exemplu din backup-ul importat (ca să scrie în același stil). */
 
-const APP_VER = '0.4.1';
+const APP_VER = '0.4.2';
 // pagină veche (din cache) + cod nou -> nu pornesc pe jumătate: șterg memoria veche și redeschid curat
 if (document.documentElement.getAttribute('data-ver') !== APP_VER) {
   (window.reparaAplicatia || function () {
@@ -538,12 +538,35 @@ function renderObs() {
   micUi(); aiUi(); updSalv();
 }
 function drawDetalii() {
-  field('oSpec', specPt(edit.locatie, edit.etaj), edit.spec, 'specialitate', () => { atins.spec = true; onFormChange(); });
+  field('oSpec', specPt(edit.locatie, edit.etaj), edit.spec, 'specialitate', () => { atins.spec = true; firmeToate = false; deseneazaFirme(); onFormChange(); });
   field('oTip', cfg.tipuri, edit.tip, 'tip', () => { atins.tip = true; onFormChange(); });
   field('oPrio', cfg.prioritati, edit.prioritate, 'prioritate', onFormChange);
-  respObs = makeChips('oResp', cfg.responsabili || [], edit.resp || [], true, onFormChange);
+  firmeToate = false;
+  deseneazaFirme(edit.resp || []);
   $('oTermen').value = edit.termen || '';
   updSumObs();
+}
+// Firma: după specialitate, întâi firmele care o fac (din constatările de până acum); restul sub „Alte firme”
+let firmeToate = false;
+function firmeSugerate(spec) {
+  const m = stil().firmePeSpec || {};
+  return spec ? (m[`${edit.locatie}|${spec}`] || m[spec] || []).filter(f => (cfg.responsabili || []).includes(f)) : [];
+}
+function deseneazaFirme(alese) {
+  const sel = alese || (respObs ? respObs.get() : edit.resp || []);
+  const spec = val('oSpec') || edit.spec;
+  const sug = firmeSugerate(spec);
+  const toate = cfg.responsabili || [];
+  const rest = toate.filter(f => !sug.includes(f));
+  const cuSug = sug.length > 0 && rest.length > 0;
+  const vizibile = !cuSug || firmeToate ? [...sug, ...rest] : [...sug, ...sel.filter(f => !sug.includes(f))];
+  respObs = makeChips('oResp', vizibile, sel, true, onFormChange);
+  $('firmeSug').hidden = !cuSug;
+  $('firmeSug').textContent = cuSug ? `Fac de obicei „${spec}”:` : '';
+  const b = $('firmeAlte');
+  b.hidden = !cuSug || firmeToate;
+  b.innerHTML = `${icon('next')}Alte firme (${rest.filter(f => !sel.includes(f)).length})`;
+  b.onclick = () => { firmeToate = true; deseneazaFirme(); };
 }
 function updSumObs() {
   $('sumObs').textContent = [val('oSpec'), val('oTip'), respObs ? respObs.get().join(' / ') : ''].filter(Boolean).join(' · ') || 'specialitate, tip, firmă';

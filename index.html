@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="ro" data-ver="0.4.1">
+<html lang="ro" data-ver="0.4.2">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -12,7 +12,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
-<link rel="stylesheet" href="style.css?v=0.4.1">
+<link rel="stylesheet" href="style.css?v=0.4.2">
 </head>
 <body>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
@@ -159,7 +159,8 @@
       <label class="frow"><span class="fl">Specialitate</span><span id="oSpec" class="fc"></span></label>
       <label class="frow"><span class="fl">Tip</span><span id="oTip" class="fc"></span></label>
       <label class="frow"><span class="fl">Prioritate</span><span id="oPrio" class="fc"></span></label>
-      <div class="fblock"><span class="fl">Firmă</span><div id="oResp" class="chips"></div></div>
+      <div class="fblock"><span class="fl">Firmă</span><div id="firmeSug" class="sug" hidden></div><div id="oResp" class="chips"></div>
+        <button id="firmeAlte" class="linkbtn" type="button" hidden></button></div>
       <label class="frow"><span class="fl">Termen</span><span class="fc"><input id="oTermen" type="date"></span></label>
     </details>
 
@@ -259,8 +260,8 @@ window.addEventListener('error', function (e) {
   b.hidden = false; var l = document.getElementById('incarc'); if (l) l.hidden = true;
 });
 </script>
-<script src="lib/gifenc.js?v=0.4.1"></script>
-<script src="app.js?v=0.4.1"></script>
+<script src="lib/gifenc.js?v=0.4.2"></script>
+<script src="app.js?v=0.4.2"></script>
 <script>
 // pagina și codul trebuie să fie din aceeași versiune; altfel repar singur (o dată)
 (function () { var v = document.documentElement.getAttribute('data-ver'); if (typeof APP_VER === 'undefined' || APP_VER !== v) reparaAplicatia(false); })();
