@@ -3,7 +3,7 @@
 Aplicație web (PWA) pentru constatări pe teren, pe telefon (Android și iPhone):
 
 1. **Poză sau video.** Video-ul (câteva secunde, ex. o ușă care nu se închide) devine un GIF mic, direct pe telefon.
-2. **Spune ce vezi.** Dictare în română; asistentul AI (DeepSeek) scrie rândul scurt și alege încăperea, specialitatea, tipul și firma. Tu doar verifici.
+2. **Spune ce vezi.** Dictare în română. La cerere („Completează automat textul”), asistentul AI (DeepSeek) rescrie textul într-un rând scurt.
 3. **Salvează.** La final: fișier pentru „Combina backup-uri” din aplicația de verificări, raport PDF sau tabel CSV.
 
 - Datele stau pe telefon (IndexedDB) până la export. Constatarea începută se păstrează și dacă pagina se închide.

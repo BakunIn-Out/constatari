@@ -6,7 +6,7 @@
    Datele stau pe telefon (IndexedDB). Spre AI (doar când completează) pleacă textul + imaginile constatării
    și câteva rânduri-exemplu din backup-ul importat (ca să scrie în același stil). */
 
-const APP_VER = '0.3.1';
+const APP_VER = '0.3.2';
 // pagină veche (din cache) + cod nou -> nu pornesc pe jumătate: șterg memoria veche și redeschid curat
 if (document.documentElement.getAttribute('data-ver') !== APP_VER) {
   (window.reparaAplicatia || function () {
@@ -162,7 +162,15 @@ function toast(msg, ms = 2600) {
 function field(id, list, value, ph, onchange) {
   const box = $(id); box.innerHTML = '';
   let el;
-  if (list && list.length) {
+  if (list && list.length > 8) {
+    el = document.createElement('button'); el.type = 'button'; el.className = 'pick';
+    const pune = v => { el.value = v || ''; el.textContent = v || `— ${ph || 'alege'} —`; el.classList.toggle('empty', !v); };
+    pune(value);
+    el.onclick = e => {
+      e.preventDefault();
+      alegeDinLista((ph || 'alege').replace(/^./, c => c.toUpperCase()), list, el.value, v => { pune(v); el.dispatchEvent(new Event('change')); });
+    };
+  } else if (list && list.length) {
     el = document.createElement('select');
     const opts = list.slice();
     if (value && !opts.includes(value)) opts.push(value);
@@ -205,10 +213,33 @@ function makeChips(id, items, selected, multi = true, onchange) {
   };
 }
 
+function alegeDinLista(titlu, lista, curent, cb) {
+  const sh = $('picker'), q = $('pkCauta'), box = $('pkLista');
+  $('pkTitlu').textContent = titlu; q.value = ''; sh.hidden = false;
+  const inchide = () => { sh.hidden = true; q.oninput = null; };
+  const deseneaza = () => {
+    const k = cheie(q.value);
+    const vis = lista.filter(v => !k || cheie(v).includes(k));
+    box.innerHTML = '';
+    vis.forEach(v => {
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'pkrow' + (v === curent ? ' on' : ''); b.textContent = v;
+      b.onclick = () => { inchide(); cb(v); };
+      box.appendChild(b);
+    });
+    if (!vis.length) box.innerHTML = '<div class="info">Nimic găsit.</div>';
+    box.scrollTop = 0;
+  };
+  q.oninput = deseneaza; deseneaza();
+  $('pkInchide').onclick = inchide;
+  sh.onclick = e => { if (e.target === sh) inchide(); };
+}
+
 /* ---------------- liste din config ---------------- */
 const etajePt = loc => (cfg.etaje && cfg.etaje[loc]) || [];
 const aptPt = (loc, etaj) => (cfg.apartamente && cfg.apartamente[`${loc}|${etaj}`]) || [];
 const specPt = (loc, etaj) => (cfg.specialitatiZone && cfg.specialitatiZone[`${loc}|${etaj}`]) || cfg.specialitati || [];
+// „Living / Bucatarie” = open space: apare DOAR la apartamentele care îl au în lista lor (ex. garsoniera A_12), nu și la „Altă încăpere”
+const combinata = c => / \/ /.test(c);
 function camerePt(loc, etaj, apt) {
   const ca = cfg.camere_apt || {}; const pref = `${loc}|${etaj}|`;
   const m = String(apt).match(/^([A-Za-z]+)\d+\.(\d+)$/);           // A1.04 -> A_04
@@ -227,7 +258,7 @@ const toateCamerele = ed => [...new Set([...camerePt(ed.locatie, ed.etaj, ed.apt
 function urmApt() { const l = aptPt(ses.locatie, ses.etaj); const i = l.indexOf(ses.apt); return i >= 0 && i < l.length - 1 ? l[i + 1] : ''; }
 
 /* ---------------- navigare (butonul Înapoi al telefonului merge ca în aplicație) ---------------- */
-const VIEWS = { start: 'vStart', apt: 'vApt', obs: 'vObs', gata: 'vGata', setari: 'vSetari', lock: 'vLock' };
+const VIEWS = { start: 'vStart', apt: 'vApt', obs: 'vObs', gata: 'vGata', setari: 'vSetari', lock: 'vLock', mele: 'vMele' };
 let curView = null;
 let formDirty = false;
 // istoricul nostru: fiecare intrare știe la ce adâncime e (d), așa că Înapoi / Înainte / reîncărcarea rămân corecte
@@ -249,6 +280,8 @@ window.addEventListener('popstate', e => {
   const d = e.state && Number.isInteger(e.state.d) ? e.state.d : null;
   if (d !== null) { nav.pos = d; nav.stack[d] = v; }
   else { nav.pos++; nav.stack.length = nav.pos; nav.stack.push(v); history.replaceState({ v, d: nav.pos }, '', '#' + v); }
+  const deschisa = ['picker', 'sheet'].find(id => !$(id).hidden);
+  if (deschisa && curView && v !== curView) { $(deschisa).hidden = true; navPush(curView); return; }
   if (curView === 'obs' && v !== 'obs') {
     if (obsNesalvata()) { navPush('obs'); intreabaIesire(() => history.back()); return; }
     aruncObs();
@@ -278,7 +311,7 @@ function show(v) {
   $('btnBack').hidden = v === 'start' || v === 'lock';
   $('btnSetari').hidden = v === 'setari' || v === 'obs' || v === 'lock';
   if (v !== 'obs') stopMic(true);
-  ({ start: renderStart, apt: renderApt, obs: renderObs, gata: renderGata, setari: renderSetari, lock: renderLock })[v]();
+  ({ start: renderStart, apt: renderApt, obs: renderObs, gata: renderGata, setari: renderSetari, lock: renderLock, mele: renderMele })[v]();
   window.scrollTo(0, 0);
 }
 $('btnBack').onclick = () => nav.pos > 0 ? history.back() : go(parinte(curView), true);
@@ -321,6 +354,7 @@ function renderStart() {
   drawLoc();
   const neexp = all.filter(r => !r._meta?.exportat).length;
   $('stNoi').textContent = neexp ? String(neexp) : '';
+  $('stTot').textContent = all.length ? String(all.length) : '';
 }
 function drawLoc() {
   const g = $('gLoc'); g.innerHTML = '';
@@ -343,6 +377,35 @@ function drawLoc() {
 }
 $('btnContinua').onclick = () => go('apt');
 $('btnLaGata').onclick = () => go('gata');
+$('btnMele').onclick = () => { $('meleCauta').value = ''; go('mele'); };
+$('meleCauta').addEventListener('input', () => renderMele());
+
+/* ---------------- CONSTATĂRILE MELE: tot ce e pe telefon, grupat pe apartamente ---------------- */
+let filtruMele = 'toate';
+function renderMele() {
+  head('Constatările mele', `${all.length} pe acest telefon`);
+  const k = cheie($('meleCauta').value);
+  const potriveste = r => !k || cheie([r.apt, r.locatie, r.etaj, r.inc, r.obs, r.spec, r.tip, (r.resp || []).join(' ')].join(' ')).includes(k);
+  const recs = (filtruMele === 'netrimise' ? all.filter(r => !r._meta?.exportat) : all).filter(potriveste).slice().sort((a, b) => (b._ts || 0) - (a._ts || 0));
+  $('meleEmpty').hidden = !!recs.length;
+  const grupe = new Map();
+  recs.forEach(r => { const k = `${r.locatie}|${r.etaj}|${r.apt}`; if (!grupe.has(k)) grupe.set(k, []); grupe.get(k).push(r); });
+  const box = $('meleList'); box.innerHTML = '';
+  grupe.forEach(l => {
+    const r0 = l[0];
+    const h = document.createElement('button'); h.type = 'button'; h.className = 'grup';
+    h.innerHTML = `<b>${esc(r0.apt)}</b><span class="gl">${esc(r0.locatie)} · ${esc(r0.etaj)}</span><span class="pill">${l.length}</span>${icon('next')}`;
+    h.setAttribute('aria-label', `Deschide ${r0.apt}`);
+    h.onclick = () => { ses.locatie = r0.locatie; ses.etaj = r0.etaj; ses.apt = r0.apt; saveSes(); go('apt'); };
+    const lst = document.createElement('div'); lst.className = 'list';
+    l.forEach(r => { const d = document.createElement('button'); d.type = 'button'; d.className = 'item'; d.innerHTML = itemHtml(r); d.onclick = () => openObs(r); lst.appendChild(d); });
+    box.appendChild(h); box.appendChild(lst);
+  });
+  document.querySelectorAll('#vMele .filtre .chip').forEach(b => {
+    b.classList.toggle('on', b.dataset.f === filtruMele);
+    b.onclick = () => { filtruMele = b.dataset.f; renderMele(); };
+  });
+}
 
 /* ---------------- APARTAMENT ---------------- */
 function recsApt() { return all.filter(r => r.locatie === ses.locatie && r.etaj === ses.etaj && r.apt === ses.apt); }
@@ -415,8 +478,8 @@ function renderObs() {
   const cam = camerePt(edit.locatie, edit.etaj, edit.apt);
   const sel = edit.inc ? edit.inc.split(',').map(s => s.trim()).filter(Boolean) : [];
   incChips = makeChips('incChips', cam, sel, false, () => { atins.inc = true; onFormChange(); });   // o singură încăpere, ca în aplicația de verificări
-  const alte = (cfg.camere || []).filter(c => !cam.includes(c));
-  $('incAlta').innerHTML = '<option value="">Altă încăpere…</option>' + alte.map(c => `<option>${esc(c)}</option>`).join('');
+  const alte = (cfg.camere || []).filter(c => !cam.includes(c) && !combinata(c));
+  incAlte = alte;
   $('incAlta').hidden = !alte.length;
   $('txtObs').value = edit.obs || ''; creste();
   drawDetalii();
@@ -438,7 +501,8 @@ function updSumObs() {
   $('sumObs').textContent = [val('oSpec'), val('oTip'), respObs ? respObs.get().join(' / ') : ''].filter(Boolean).join(' · ') || 'specialitate, tip, firmă';
 }
 function onFormChange() { formDirty = true; updSumObs(); saveDraftSoon(); aiUi(); }
-$('incAlta').onchange = e => { if (e.target.value) { incChips.add(e.target.value); e.target.value = ''; atins.inc = true; onFormChange(); } };
+let incAlte = [];
+$('incAlta').onclick = () => alegeDinLista('Altă încăpere', incAlte, '', v => { incChips.add(v); atins.inc = true; onFormChange(); });
 $('txtObs').addEventListener('input', () => { creste(); onFormChange(); });
 function creste() { const t = $('txtObs'); t.style.height = 'auto'; t.style.height = Math.min(t.scrollHeight + 2, 280) + 'px'; }
 $('oTermen').addEventListener('change', onFormChange);
@@ -495,7 +559,7 @@ async function onFiles(e) {
     try { const p = await compress(poze[i]); ed.poze.push(p); adaugate++; } catch (err) { toast('Nu am putut citi o poză.'); }
     joburi[i].termina();
   }
-  if (adaugate) { pozeVer++; if (edit === ed) { onFormChange(); aiDinImagine(); } }
+  if (adaugate) { pozeVer++; if (edit === ed) onFormChange(); }
 }
 function addVideo(f, ed) {
   const job = jobNou(ed, 'video');
@@ -505,7 +569,7 @@ function addVideo(f, ed) {
       const r = await videoToGif(f, p => { job.pct = p; const b = job.el && job.el.querySelector('b'); if (b) b.textContent = p + '%'; });
       if (r.taiat) toast(`Video lung: am păstrat primele ${r.sec} secunde.`, 4500);
       ed.poze.push(r.url); cadreGif.set(r.url, r.cadre); pozeVer++;
-      if (edit === ed) { onFormChange(); aiDinImagine(); }
+      if (edit === ed) onFormChange();
     } catch (err) { toast('Nu am putut face GIF din video: ' + err.message, 5000); }
     finally { job.termina(); }
   });
@@ -632,7 +696,8 @@ async function saveForm() {
     inapoiLaApt();
   } finally { saving = false; $('btnSalv').disabled = false; }
 }
-function inapoiLaApt() { if (prevView() === 'apt') history.back(); else go('apt', true); }
+const vineDinLista = () => prevView() === 'apt' || prevView() === 'mele';
+function inapoiLaApt() { if (vineDinLista()) history.back(); else go('apt', true); }
 $('btnSalv').onclick = saveForm;
 $('btnSterge').onclick = async () => {
   if (!edit || !edit.id || !confirm('Ștergi constatarea asta de pe telefon?')) return;
@@ -650,7 +715,7 @@ function micUi() {
 }
 function renderMicInfo() {
   $('micInfo').textContent = (!SR || srOprit) ? 'Pe acest telefon: apasă căsuța de mai jos, apoi microfonul de pe tastatură.'
-    : 'Ex.: „ușa de la baie, tocul zgâriat sus”. Aplicația scrie rândul și completează restul.';
+    : 'Ex.: „ușa de la baie, tocul zgâriat sus”.';
 }
 const asteptMic = () => rec ? Promise.race([rec.sfarsit, pauza(1500)]) : Promise.resolve();
 async function startMic() {
@@ -694,7 +759,6 @@ async function startMic() {
     micOn = false; rec = null; micUi(); gata();
     if (!edit) return;
     onFormChange();
-    if (aiDupaMic) { aiDupaMic = false; if (ta.value.trim()) aiRun('dictare'); }
   };
   try { r.start(); micOn = true; aiDupaMic = false; micUi(); aiUi(); micActiv(); }
   catch (err) { rec = null; gata(); toast('Nu am putut porni dictarea.'); }
@@ -711,68 +775,53 @@ $('btnMic').onclick = () => micOn ? stopMic(false) : startMic();
 const AI = { url: 'https://api.deepseek.com', model: 'deepseek-flash', timeout: 35000 };
 const aiKey = () => (PACHET && PACHET.ai && PACHET.ai.key) || '';
 const aiOn = () => !!aiKey();
+// AI-ul face UN singur lucru și DOAR când omul apasă „Completează automat”: rescrie textul spus într-un rând curat.
+// Încăperea, specialitatea, tipul, firma le alege omul (AI-ul nu are de unde să le știe).
 const PROMPT = `Esti asistentul unui inginer care verifica apartamente noi inainte de predare, pe un santier de blocuri de locuinte.
-Primesti: textul dictat de inginer (recunoastere vocala automata, poate avea cuvinte gresite), 0-4 imagini (poze sau cadre dintr-un video) si listele aplicatiei.
-Scrii constatarea pentru aplicatia de verificari.
-
-"obs" = UN rand scurt (de regula sub 80 de caractere), FARA diacritice, fara punct la final, in stilul exemplelor: elementul + unde + problema.
+Primesti textul dictat de inginer (recunoastere vocala automata, poate avea cuvinte gresite) si 0-4 imagini ale problemei.
+Il rescrii ca UN rand scurt pentru aplicatia de verificari ("obs"): de regula sub 80 de caractere, FARA diacritice, fara punct la final, in stilul exemplelor: elementul + unde + problema.
 - Pastrezi exact sensul inginerului. NU adaugi probleme pe care nu le-a spus.
-- Imaginile le folosesti doar ca sa precizezi ce a spus (ce element, ce parte, sus/jos, interior/exterior) si DOAR cu ce se vede sigur; daca nu esti sigur, nu adaugi nimic din imagine. Daca NU exista text dictat, descrii problema clar vizibila in imagini si pui "din_imagine": true; daca nu se vede nicio problema clara, "obs" = "".
+- Imaginile le folosesti doar ca sa precizezi ce a spus (ce element, ce parte, sus/jos, interior/exterior) si DOAR cu ce se vede sigur; daca nu esti sigur, nu adaugi nimic din imagine.
 - Mai multe probleme la acelasi element: in acelasi rand, separate prin "; ".
-- Corectezi cuvintele recunoscute gresit dupa glosar (ex. "spalier" -> "spalet").
+- Corectezi cuvintele recunoscute gresit dupa glosar (ex. "spalier" -> "spalet", "ce te" -> "CT").
 Exemple de stil: "Toc usa baie zgariat (partea superioara)" · "Usa dormitor nu se inchide" · "Usa acces zgariata" · "Usa baie cu dus atinge tocul la inchidere" · "Usa baie dus nu este in boloboc" · "Coltar grinda living nu este drept" · "Urme de slefuit pe intrados" · "Spalet fereastra nefinisat in partea de jos" · "Lavabil scurs sub priza" · "Masca cada nu este in linie cu cada" · "Rampa CT murdara de vopsea" · "Folie lichida neindepartata de pe tamplarie".
 Glosar: spalet = latura golului de usa/fereastra · intrados = fata de dedesubt a grinzii · coltar = profilul de pe muchie · olnita = racordul/muchia dintre doua suprafete · aparataj = prize, intrerupatoare · CT = centrala termica · rampa CT = tevile de sub centrala · masca cada = panoul care inchide cada · distantiere = crucitele dintre placi · defoliat = scoasa folia de protectie · folie lichida · beton contact · reparatii perimetrale = retusurile din jurul ramei/tocului · toc · foaie usa · pervaz · glaf · plinta · balamale · broasca · yala · maner · garnitura · prag · glet · lavabil · chit · boloboc (nu e in boloboc = nu e drept/la nivel) · are joc = se misca, nu sta fix.
-
-Campuri:
-- "inc": incaperea, scrisa EXACT ca in lista "incaperi"; "" daca nu reiese. Daca ce spune omul se potriveste cu mai multe din lista (ex. "baie", iar lista are "Baie cu cada" si "Baie cu rigola"), alegi doar daca reiese clar (cada / dus / rigola); altfel "" si in "nesigur" scrii "care baie?".
-- "spec": specialitatea, EXACT din lista "specialitati"; "" daca nu reiese.
-- "tip": EXACT din lista "tipuri" (Deteriorare = stricat, zgariat, ciupit, rupt; Neconformitate = executat gresit sau nu functioneaza; Lipsa = lipseste; Neterminat = nefinalizat; Curatenie = murdarie de indepartat).
-- "nesigur": foarte scurt, doar daca ceva important nu e clar (ex. "nu reiese care usa"); altfel "".
-Raspunzi DOAR cu JSON: {"obs":"","inc":"","spec":"","tip":"","din_imagine":false,"nesigur":""}`;
+Raspunzi DOAR cu JSON: {"obs":""}`;
 
 let ai = { seq: 0, busy: false, undo: null, sig: '', stare: null, info: null, descriere: '' };
 function aiReset() { ai = { seq: ai.seq + 1, busy: false, undo: null, sig: '', stare: null, info: null, descriere: '' }; }
 const semnatura = () => edit ? `${$('txtObs').value.trim()}|${edit.poze.length}` : '';
 function aiUi() {
-  const areInput = !!edit && (!!$('txtObs').value.trim() || edit.poze.length > 0);
-  $('btnAi').hidden = !aiOn() || ai.busy || micOn || !areInput || semnatura() === ai.sig;
+  const areText = !!edit && !!$('txtObs').value.trim();
+  $('btnAi').hidden = !aiOn() || ai.busy || micOn || !areText || semnatura() === ai.sig;
   const bar = $('aiBar');
   if (!ai.stare || micOn) { bar.hidden = true; return; }
   bar.hidden = false; bar.className = 'aibar ' + ai.stare;
-  if (ai.stare === 'lucru') bar.innerHTML = `<span class="spin"></span><span>Completez automat…</span>`;
+  if (ai.stare === 'lucru') bar.innerHTML = `<span class="spin"></span><span>Scriu rândul…</span>`;
   else if (ai.stare === 'gata') {
-    const i = ai.info || {};
-    bar.innerHTML = `${icon('spark')}<span>${i.dinImagine ? 'Descris din imagine. Verifică textul.' : 'Completat automat din ce ai spus.'}${i.nesigur ? `<small>Neclar: ${esc(i.nesigur)}</small>` : ''}</span><button type="button" id="aiUndo" class="linkbtn">Anulează</button>`;
+    bar.innerHTML = `${icon('spark')}<span>Text rescris din ce ai spus.</span><button type="button" id="aiUndo" class="linkbtn">Anulează</button>`;
     $('aiUndo').onclick = aiAnuleaza;
   } else if (ai.stare === 'eroare') {
-    bar.innerHTML = `${icon('alert')}<span>Nu am putut completa automat: ${esc(ai.info)}</span><button type="button" id="aiRetry" class="linkbtn">Reîncearcă</button>`;
-    $('aiRetry').onclick = () => aiRun('buton');
-  } else if (ai.stare === 'nimic') {
-    bar.innerHTML = `${icon('alert')}<span>Nu văd o problemă clară în imagine. Spune ce e.</span>`;
+    bar.innerHTML = `${icon('alert')}<span>Nu am putut completa: ${esc(ai.info)}</span><button type="button" id="aiRetry" class="linkbtn">Reîncearcă</button>`;
+    $('aiRetry').onclick = aiRun;
   }
 }
-function aiStare(s, info) { ai.stare = s; ai.info = info ?? null; aiUi(); }
-$('btnAi').onclick = () => aiRun('buton');
+function aiStare(st, info) { ai.stare = st; ai.info = info ?? null; aiUi(); }
+$('btnAi').onclick = () => aiRun();
 
-function aiDinImagine() {           // după o poză / un GIF nou: dacă nu e text, propune o descriere din imagine
-  if (!aiOn() || !edit || micOn || ai.busy || $('txtObs').value.trim()) return;
-  aiRun('imagine');
-}
-async function aiRun(motiv) {
+async function aiRun() {
   if (!aiOn() || !edit) return;
   readForm();
   const text = $('txtObs').value.trim();
-  if (!text && !edit.poze.length) return;
-  const vorbit = ai.descriere && text === ai.descriere ? '' : text;   // descrierea propusă din imagine nu e „ce a spus omul”
+  if (!text) return;
   const ed = edit, seq = ++ai.seq;
   ai.busy = true; ai.running = seq; aiStare('lucru');
   try {
     const imgs = await imaginiPentruAi(ed);
-    const o = await aiCall(vorbit, imgs, ed);
+    const o = await aiCall(text, imgs);
     if (seq !== ai.seq || edit !== ed) return;
-    if (motiv === 'imagine' && ($('txtObs').value.trim() || micOn)) { aiStare(null); return; }   // între timp omul a scris / vorbește
-    if ($('txtObs').value.trim() !== text) { aiStare(null); return; }                                // textul s-a schimbat între timp
-    aplicaAi(o, vorbit);
+    if ($('txtObs').value.trim() !== text) { aiStare(null); return; }      // textul s-a schimbat între timp
+    aplicaAi(o, text);
   } catch (e) {
     if (seq === ai.seq && edit === ed) aiStare('eroare', e.message);
   } finally {
@@ -794,84 +843,56 @@ async function aiFetch(path, opt) {
     let res;
     try { res = await fetch(AI.url + path, { ...opt, signal: ctrl.signal, headers: { ...(opt.headers || {}), Authorization: 'Bearer ' + aiKey() } }); }
     catch (e) { throw new Error(e.name === 'AbortError' ? 'răspunsul a durat prea mult' : 'nu am internet acum'); }
-    if (res.status === 401) throw new Error('cheia nu e bună (vezi Setări)');
+    if (res.status === 401) throw new Error('cheia nu mai e bună');
     if (res.status === 402) throw new Error('s-a terminat creditul DeepSeek');
     if (res.status === 429) throw new Error('prea multe cereri, mai încearcă');
     if (!res.ok) throw new Error('eroare ' + res.status);
     try { return await res.json(); } catch (e) { throw new Error(e.name === 'AbortError' ? 'răspunsul a durat prea mult' : 'răspuns incomplet, mai încearcă'); }
   } finally { clearTimeout(to); }
 }
-async function aiCall(text, imgs, ed) {
-  const st = stil();
-  const ctx = {
-    text_dictat: text || '(nimic dictat - descrie din imagini)',
-    incaperi: toateCamerele(ed), specialitati: specPt(ed.locatie, ed.etaj), tipuri: cfg.tipuri,
-    specialitate_aleasa_inainte: ed.spec || '',
-    exemple_din_aplicatia_de_verificari: st.exemple.slice(0, 40)
-  };
+async function aiCall(text, imgs) {
+  const ctx = { text_dictat: text, exemple_din_aplicatia_de_verificari: stil().exemple.slice(0, 40) };
   const content = [{ type: 'text', text: JSON.stringify(ctx) }, ...imgs.map(u => ({ type: 'image_url', image_url: { url: u } }))];
   const d = await aiFetch('/chat/completions', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       model: AI.model, temperature: 0.2, response_format: { type: 'json_object' },
-      // cu text: fără „gândire” (~1-2 s). Doar imagine: gândire scurtă (~5 s), altfel e prea prudent; omul oricum abia începe să vorbească
-      ...(text ? { thinking: { type: 'disabled' }, max_tokens: 1500 } : { reasoning_effort: 'low', max_tokens: 4000 }),
+      thinking: { type: 'disabled' }, max_tokens: 600,             // fără „gândire”: ~1-2 s
       messages: [{ role: 'system', content: PROMPT }, { role: 'user', content }]
     })
   });
   const o = jsonLax(d.choices && d.choices[0] && d.choices[0].message && d.choices[0].message.content);
-  if (o) return o;
+  if (o && typeof o.obs === 'string') return o;
   throw new Error('răspuns neclar, mai încearcă');
 }
-function jsonLax(s) {               // JSON-ul poate veni tăiat sau cu text în jur
-  if (typeof s !== 'string' || !s.trim()) return null;
-  try { const o = JSON.parse(s); return o && typeof o === 'object' ? o : null; } catch (e) { }
-  const m = s.match(/\{[\s\S]*\}/); if (m) { try { return JSON.parse(m[0]); } catch (e) { } }
-  const o = {};
-  ['obs', 'inc', 'spec', 'tip', 'nesigur'].forEach(k => { const r = new RegExp('"' + k + '"\\s*:\\s*"((?:[^"\\\\]|\\\\.)*)"').exec(s); if (r) { try { o[k] = JSON.parse('"' + r[1] + '"'); } catch (e) { o[k] = r[1]; } } });
-  return o.obs !== undefined ? o : null;
+function jsonLax(x) {               // JSON-ul poate veni tăiat sau cu text în jur
+  if (typeof x !== 'string' || !x.trim()) return null;
+  try { const o = JSON.parse(x); return o && typeof o === 'object' ? o : null; } catch (e) { }
+  const m = x.match(/\{[\s\S]*\}/); if (m) { try { return JSON.parse(m[0]); } catch (e) { } }
+  const r = /"obs"\s*:\s*"((?:[^"\\]|\\.)*)"/.exec(x);
+  if (!r) return null;
+  try { return { obs: JSON.parse('"' + r[1] + '"') }; } catch (e) { return { obs: r[1] }; }
 }
-function potrivire(v, list) {
-  if (!v || !list || !list.length) return '';
-  if (list.includes(v)) return v;
-  const k = cheie(v); return list.find(x => cheie(x) === k) || '';
-}
-function curat(s) {
-  let t = fara(s).replace(/\s+/g, ' ').trim().replace(/[.\s]+$/, '');
+function curat(x) {
+  let t = fara(x).replace(/\s+/g, ' ').trim().replace(/[.\s]+$/, '');
   if (t.length > 220) t = t.slice(0, 220);
   return t ? t[0].toUpperCase() + t.slice(1) : '';
 }
-function aplicaAi(o, textInitial) {
-  readForm();
-  const inainte = { txt: $('txtObs').value, inc: incChips.get(), spec: edit.spec, tip: edit.tip, resp: edit.resp.slice() };
-  const sch = [];
+function aplicaAi(o, text) {
   const obs = curat(o.obs);
-  if (!obs && !textInitial) { aiStare('nimic'); ai.sig = semnatura(); return; }
-  if (obs && obs !== $('txtObs').value.trim()) { $('txtObs').value = obs; creste(); sch.push('txtObs'); }
-  const cam = textInitial ? potrivire(o.inc, toateCamerele(edit)) : '';     // din imagine singură nu ghicesc încăperea
-  if (cam && !atins.inc) { const c = incChips.get(); if (c.length !== 1 || c[0] !== cam) { incChips.set([cam]); sch.push('incChips'); } }
-  const sp = potrivire(o.spec, specPt(edit.locatie, edit.etaj));
-  if (sp && !atins.spec && sp !== edit.spec) { edit.spec = sp; sch.push('oSpec'); }
-  const tp = potrivire(o.tip, cfg.tipuri);
-  if (tp && !atins.tip && tp !== edit.tip) { edit.tip = tp; sch.push('oTip'); }
-  if (!edit.resp.length) {
-    const m = stil().respPeSpec || {}; const r = m[`${edit.locatie}|${edit.spec}`] || m[edit.spec];
-    if (r && r.length) { edit.resp = r.slice(); sch.push('oResp'); }
-  }
-  edit._meta = { ...(edit._meta || {}) };
-  if (textInitial) edit._meta.dictat = textInitial;
-  ai.undo = inainte;
-  ai.descriere = !textInitial && obs ? obs : '';
-  drawDetalii(); formDirty = true; readForm(); saveDraftSoon();
+  if (!obs) { aiStare('eroare', 'nu am înțeles textul'); return; }
+  ai.undo = { txt: $('txtObs').value };
+  $('txtObs').value = obs; creste();
+  edit._meta = { ...(edit._meta || {}), dictat: text };
+  formDirty = true; readForm(); saveDraftSoon();
   ai.sig = semnatura();
-  aiStare('gata', { dinImagine: !textInitial, nesigur: String(o.nesigur || '').slice(0, 120) });
-  if (sch.some(x => x === 'oSpec' || x === 'oTip' || x === 'oResp')) sch.push('sumObs');   // Detalii e de obicei închis: arăt schimbarea pe rândul rezumat
-  sch.forEach(id => { const el = $(id) && ($(id).closest('.frow, .fblock, .group') || $(id)); if (el) { el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash'); } });
+  aiStare('gata');
+  const el = $('txtObs'); el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash');
 }
 function aiAnuleaza() {
   const u = ai.undo; if (!u || !edit) return;
-  $('txtObs').value = u.txt; creste(); incChips.set(u.inc); edit.spec = u.spec; edit.tip = u.tip; edit.resp = u.resp;
-  drawDetalii(); ai.undo = null; ai.sig = ''; aiStare(null); onFormChange();
+  $('txtObs').value = u.txt; creste();
+  ai.undo = null; ai.sig = ''; aiStare(null); onFormChange();
 }
 
 /* ---------------- GATA / EXPORT ---------------- */
@@ -1014,7 +1035,7 @@ async function verificaAi() {
     editOrig = d.orig || null; pozeVerSalvat = pozeVer;
     ses.locatie = edit.locatie; ses.etaj = edit.etaj; ses.apt = edit.apt; saveSes();
     aiReset(); formDirty = true;
-    if (!(nav.pos > 0 && nav.stack[nav.pos] === 'obs' && prevView() === 'apt')) {
+    if (!(nav.pos > 0 && nav.stack[nav.pos] === 'obs' && vineDinLista())) {
       nav = { stack: [], pos: -1 }; navReplace('start'); navPush('apt'); navPush('obs');
     }
     show('obs');
@@ -1022,7 +1043,7 @@ async function verificaAi() {
   } else {
     if (d) dropDraft();
     if (nav.pos < 0) navReplace('start');            // pornire nouă (de pe ecranul telefonului) = mereu „Unde ești?”
-    if (nav.stack[nav.pos] === 'obs' && prevView() === 'apt') { history.back(); return; }   // formular fără ciornă -> înapoi la apartament
+    if (nav.stack[nav.pos] === 'obs' && vineDinLista()) { history.back(); return; }   // formular fără ciornă -> înapoi la apartament
     show(nav.stack[nav.pos]);
   }
 })();

@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="ro" data-ver="0.3.1">
+<html lang="ro" data-ver="0.3.2">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -11,7 +11,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
-<link rel="stylesheet" href="style.css?v=0.3.1">
+<link rel="stylesheet" href="style.css?v=0.3.2">
 </head>
 <body>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
@@ -85,9 +85,28 @@
       <div id="gApt" class="tiles small"></div>
     </div>
 
-    <button id="btnLaGata" class="btn block gata">
+    <button id="btnMele" class="btn block gata">
+      <svg><use href="#i-note"/></svg><span>Constatările mele</span><span id="stTot" class="pill"></span>
+    </button>
+    <button id="btnLaGata" class="btn block">
       <svg><use href="#i-upload"/></svg><span>Trimite constatările</span><span id="stNoi" class="pill"></span>
     </button>
+  </section>
+
+  <!-- CONSTATĂRILE MELE: tot ce e pe telefon, pe apartamente -->
+  <section id="vMele" class="view" hidden>
+    <input id="meleCauta" class="cauta" type="search" placeholder="Caută: apartament, încăpere, text, firmă" autocomplete="off">
+    <p class="info">Atinge o constatare ca s-o vezi, s-o schimbi sau s-o ștergi.</p>
+    <div class="chips filtre">
+      <button type="button" class="chip on" data-f="toate">Toate</button>
+      <button type="button" class="chip" data-f="netrimise">De trimis</button>
+    </div>
+    <div id="meleList"></div>
+    <div id="meleEmpty" class="empty" hidden>
+      <svg><use href="#i-note"/></svg>
+      <div class="et">Nicio constatare aici</div>
+      <div>Alege un apartament și apasă <b>Constatare nouă</b>.</div>
+    </div>
   </section>
 
   <!-- APARTAMENT -->
@@ -124,11 +143,11 @@
     <div id="micInfo" class="info"></div>
     <textarea id="txtObs" rows="2" placeholder="sau scrie aici"></textarea>
     <div id="aiBar" class="aibar" hidden></div>
-    <button id="btnAi" class="linkbtn" type="button" hidden><svg><use href="#i-spark"/></svg>Completează automat</button>
+    <button id="btnAi" class="linkbtn" type="button" hidden><svg><use href="#i-spark"/></svg>Completează automat textul</button>
 
     <div class="pas"><span class="nr">3</span>Încăperea</div>
     <div id="incChips" class="chips"></div>
-    <select id="incAlta" class="alta"><option value="">Altă încăpere…</option></select>
+    <button id="incAlta" class="alta" type="button">Altă încăpere… (caută)</button>
 
     <details id="detObs" class="det">
       <summary><span>Detalii</span><span id="sumObs" class="sum"></span></summary>
@@ -184,6 +203,14 @@
     <button id="shRamai" class="btn block" type="button">Rămân aici</button>
   </div>
 </div>
+<div id="picker" class="sheet" hidden>
+  <div class="sheetbox picker" role="dialog" aria-modal="true" aria-labelledby="pkTitlu">
+    <div id="pkTitlu" class="st"></div>
+    <input id="pkCauta" class="cauta" type="search" placeholder="Caută…" autocomplete="off">
+    <div id="pkLista" class="pklista"></div>
+    <button id="pkInchide" class="btn block" type="button">Închide</button>
+  </div>
+</div>
 <div id="incarc" class="incarc"><span class="spin"></span><span>Se deschide…</span></div>
 <div id="eroare" class="eroare" hidden>
   <div class="eb">
@@ -219,8 +246,8 @@ window.addEventListener('error', function (e) {
   b.hidden = false; var l = document.getElementById('incarc'); if (l) l.hidden = true;
 });
 </script>
-<script src="lib/gifenc.js?v=0.3.1"></script>
-<script src="app.js?v=0.3.1"></script>
+<script src="lib/gifenc.js?v=0.3.2"></script>
+<script src="app.js?v=0.3.2"></script>
 <script>
 // pagina și codul trebuie să fie din aceeași versiune; altfel repar singur (o dată)
 (function () { var v = document.documentElement.getAttribute('data-ver'); if (typeof APP_VER === 'undefined' || APP_VER !== v) reparaAplicatia(false); })();
