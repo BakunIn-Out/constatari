@@ -6,7 +6,7 @@
    Datele stau pe telefon (IndexedDB). Spre AI (doar când completează) pleacă textul + imaginile constatării
    și câteva rânduri-exemplu din backup-ul importat (ca să scrie în același stil). */
 
-const APP_VER = '0.6.0';
+const APP_VER = '0.7.0';
 // pagină veche (din cache) + cod nou -> nu pornesc pe jumătate: șterg memoria veche și redeschid curat
 if (document.documentElement.getAttribute('data-ver') !== APP_VER) {
   (window.reparaAplicatia || function () {
@@ -148,6 +148,26 @@ async function completeazaMiniaturi() {
 }
 function inLista(rec) { all = all.filter(r => r.id !== rec.id); all.push(rec); }
 function dinLista(id) { all = all.filter(r => r.id !== id); }
+
+/* ---------------- VERIFICAT, FĂRĂ PROBLEME (26.11) ----------------
+   Un apartament fără constatări arăta la fel ca unul în care n-a intrat nimeni. Acum: un buton pe apartamentul gol.
+   Apartamentul cu constatări = verificat (cu probleme); marcajul „fără probleme” se șterge când primește o constatare. */
+const LS_OK = 'constatari_fara_probleme';
+let faraPb = {};
+try { faraPb = JSON.parse(localStorage.getItem(LS_OK) || '{}') || {}; } catch (e) { faraPb = {}; }
+const cheieLoc = (loc, et, apt) => `${loc}|${et}|${apt}`;
+const saveFaraPb = () => { try { localStorage.setItem(LS_OK, JSON.stringify(faraPb)); } catch (e) { toast('Memorie plină', 5000); } };
+const areConst = (loc, et, apt) => all.some(r => r.locatie === loc && r.etaj === et && r.apt === apt);
+const eFaraPb = (loc, et, apt) => !!faraPb[cheieLoc(loc, et, apt)] && !areConst(loc, et, apt);
+const verificat = (loc, et, apt) => areConst(loc, et, apt) || eFaraPb(loc, et, apt);
+function stergeFaraPb(loc, et, apt) { const k = cheieLoc(loc, et, apt); if (faraPb[k]) { delete faraPb[k]; saveFaraPb(); } }
+// în ordinea din aplicația de verificări (corp, etaj, apartament)
+function listaFaraPb(doarNetrimise) {
+  const ord = new Map(toateApt().map((x, i) => [cheieLoc(x.loc, x.et, x.apt), i]));
+  return Object.entries(faraPb).map(([k, v]) => { const [loc, et, apt] = k.split('|'); return { ...v, k, loc, et, apt }; })
+    .filter(x => !areConst(x.loc, x.et, x.apt) && (!doarNetrimise || !x.exportat))
+    .sort((a, b) => (ord.has(a.k) ? ord.get(a.k) : 1e9) - (ord.has(b.k) ? ord.get(b.k) : 1e9));
+}
 
 /* ciorna constatării în lucru: dacă telefonul închide pagina (camera, apel, baterie), o recuperăm */
 let draftT, pozeVer = 0, pozeVerSalvat = -1;
@@ -373,8 +393,8 @@ const standalone = () => navigator.standalone === true || (window.matchMedia && 
 let alegere = { loc: '', etaj: '' };
 const eLocuinte = loc => /^L\d/i.test(loc);
 const scurtEtaj = e => e === 'Parter' ? 'P' : String(e).replace(/^Etaj\s+/i, '');
-function placa(text, on, onclick, sub) {
-  const b = document.createElement('button'); b.type = 'button'; b.className = 'tile-b' + (on ? ' on' : '');
+function placa(text, on, onclick, sub, cls) {
+  const b = document.createElement('button'); b.type = 'button'; b.className = 'tile-b' + (on ? ' on' : '') + (cls ? ' ' + cls : '');
   b.innerHTML = esc(text) + (sub ? `<span class="n">${esc(sub)}</span>` : ''); b.onclick = onclick; return b;
 }
 const laVedere = id => setTimeout(() => { const e = $(id); if (e && !e.hidden) e.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 60);
@@ -404,15 +424,21 @@ function drawLoc() {
   if (et.length === 1) alegere.etaj = et[0];                 // Exterior / Învelitoare: un singur „etaj” -> nu mai întreb
   $('blocEtaj').hidden = et.length <= 1;
   const ge = $('gEtaj'); ge.innerHTML = '';
-  et.forEach(e => ge.appendChild(placa(scurtEtaj(e), e === alegere.etaj, () => { alegere.etaj = e; drawLoc(); laVedere('blocApt'); })));
+  et.forEach(e => {                                           // etajul: câte apartamente sunt verificate (5/8); verde = tot etajul
+    const l = aptPt(alegere.loc, e), n = l.filter(a => verificat(alegere.loc, e, a)).length;
+    ge.appendChild(placa(scurtEtaj(e), e === alegere.etaj, () => { alegere.etaj = e; drawLoc(); laVedere('blocApt'); }, n ? `${n}/${l.length}` : '', n && n === l.length ? 'ok' : ''));
+  });
   const ap = alegere.loc && alegere.etaj ? aptPt(alegere.loc, alegere.etaj) : [];
   $('blocApt').hidden = !ap.length;
   $('lblApt').innerHTML = `<span class="nr">${et.length > 1 ? 3 : 2}</span>${eLocuinte(alegere.loc) ? 'Apartamentul' : 'Zona'}`;
   const ga = $('gApt'); ga.innerHTML = '';
   ga.className = ap.every(a => String(a).length <= 7) ? 'tiles small' : 'tiles';
-  ap.forEach(a => ga.appendChild(placa(a, false, () => {
-    ses.locatie = alegere.loc; ses.etaj = alegere.etaj; ses.apt = a; saveSes(); go('apt');
-  }, nrPe(alegere.loc, alegere.etaj, a))));
+  ap.forEach(a => {                                           // portocaliu = cu constatări (câte) · verde = fără probleme · alb = neverificat
+    const n = nrPe(alegere.loc, alegere.etaj, a), ok = !n && eFaraPb(alegere.loc, alegere.etaj, a);
+    ga.appendChild(placa(a, false, () => {
+      ses.locatie = alegere.loc; ses.etaj = alegere.etaj; ses.apt = a; saveSes(); go('apt');
+    }, n || (ok ? '✓' : ''), n ? 'pb' : ok ? 'ok' : ''));
+  });
 }
 $('btnContinua').onclick = () => go('apt');
 $('btnLaGata').onclick = () => go('gata');
@@ -478,16 +504,41 @@ function renderApt() {
     const d = document.createElement('button'); d.type = 'button'; d.className = 'item'; d.innerHTML = itemHtml(r);
     d.onclick = () => openObs(r); box.appendChild(d);
   });
-  $('btnCopiazaTot').hidden = !list.length;
+  $('btnCopiazaTot').hidden = !list.length; $('btnMutaTot').hidden = !list.length;
+  const marcat = !list.length && eFaraPb(ses.locatie, ses.etaj, ses.apt);
+  $('btnFaraPb').classList.toggle('on', marcat); $('btnFaraPb').setAttribute('aria-pressed', marcat ? 'true' : 'false');
   const u = urmApt();
   $('btnAptUrm').hidden = !u;
   $('btnAptUrm').innerHTML = `<small>Următorul</small><b>${esc(u)} ›</b>`;
   $('btnAptUrm').setAttribute('aria-label', 'Apartamentul următor: ' + u);
 }
 $('btnNou').onclick = () => openObs(null);
+$('btnFaraPb').onclick = () => {                              // apăsat din nou = scos (greșeală de atingere)
+  if (recsApt().length) return;
+  const k = cheieLoc(ses.locatie, ses.etaj, ses.apt);
+  if (faraPb[k]) { delete faraPb[k]; toast('Scos'); }
+  else { faraPb[k] = { ts: Date.now(), cine: getUser() }; toast(`${ses.apt}: fără probleme`); }
+  saveFaraPb(); renderApt();
+};
 $('btnCopiazaTot').onclick = () => alegeApt({ locatie: ses.locatie, etaj: ses.etaj, apt: ses.apt }, async dest => {
   const n = await copiazaIn(recsApt(), dest); toast(`Copiate ${n} în ${dest.apt}`);
 });
+
+/* ---------------- MUTARE (Denis, 26.11): ales greșit apartamentul / etajul -> muți constatarea, cu tot cu poze ----------------
+   Același id (în aplicația de verificări se actualizează locul, nu apare o constatare nouă); se trimite din nou. */
+$('btnMutaTot').onclick = () => alegeApt({ locatie: ses.locatie, etaj: ses.etaj, apt: ses.apt }, async dest => {
+  const recs = recsApt(); let n = 0; const t0 = Date.now();
+  for (const r of recs) {
+    const loc = { locatie: dest.loc, etaj: dest.et, apt: dest.apt, _ts: t0 + n };
+    try { await dbPatch(r.id, x => ({ ...x, ...loc, _meta: { ...(x._meta || {}), exportat: null } })); } catch (e) { toast('Nu am putut muta: ' + e.message, 5000); break; }
+    Object.assign(r, loc); r._meta = { ...(r._meta || {}), exportat: null }; n++;
+  }
+  if (!n) return;
+  stergeFaraPb(dest.loc, dest.et, dest.apt);
+  ses.locatie = dest.loc; ses.etaj = dest.et; ses.apt = dest.apt; saveSes();
+  alegere = { loc: dest.loc, etaj: dest.et };
+  renderApt(); window.scrollTo(0, 0); toast(`${n === 1 ? "Mutată" : "Mutate"} ${n} în ${dest.apt}`);
+}, 'Mută tot în');
 
 /* ---------------- COPIERE în alt apartament (aceleași probleme; fără poze: pozele sunt din apartamentul vechi) ---------------- */
 function toateApt() {
@@ -495,11 +546,11 @@ function toateApt() {
   Object.entries(cfg.apartamente || {}).forEach(([k, l]) => { const [loc, et] = k.split('|'); (l || []).forEach(a => out.push({ loc, et, apt: a, lbl: `${a} · ${loc} · ${et}` })); });
   return out;
 }
-function alegeApt(din, cb) {
+function alegeApt(din, cb, titlu = 'Copiază în') {
   const l = toateApt().filter(x => !(x.loc === din.locatie && x.et === din.etaj && x.apt === din.apt));
   const scor = x => (x.loc === din.locatie ? 2 : 0) + (x.et === din.etaj ? 1 : 0);
   const ord = l.map((x, i) => [x, i]).sort((a, b) => scor(b[0]) - scor(a[0]) || a[1] - b[1]).map(([x]) => x);
-  alegeDinLista('Copiază în', ord.map(x => x.lbl), '', lbl => { const d = ord.find(x => x.lbl === lbl); if (d) cb(d); });
+  alegeDinLista(titlu, ord.map(x => x.lbl), '', lbl => { const d = ord.find(x => x.lbl === lbl); if (d) cb(d); });
 }
 async function copiazaIn(recs, dest) {
   let n = 0;
@@ -510,6 +561,7 @@ async function copiazaIn(recs, dest) {
       _meta: { ...(r._meta || {}), exportat: null, thumb: '', gif: false, copiatDin: r.id } });
     try { await dbSalveaza(c, []); inLista(usoara({ ...c, poze: [] })); n++; } catch (e) { toast('Nu am putut copia: ' + e.message, 5000); break; }
   }
+  if (n) stergeFaraPb(dest.loc, dest.et, dest.apt);
   return n;
 }
 $('btnAptUrm').onclick = () => {
@@ -525,7 +577,7 @@ const fp = u => String(u).length + ':' + String(u).slice(-64);
 const uitaCadre = e => (e && e.poze || []).forEach(x => cadreGif.delete(fp(x)));
 const inLucru = [];                                          // poze care se micșorează / video-uri care devin GIF, acum
 let saving = false, editOrig = null, coadaVideo = Promise.resolve();
-const amprenta = r => JSON.stringify([r.inc, r.obs, r.spec, r.tip, r.prioritate, r.termen, r.resp, (r.poze || []).map(p => p.length + p.slice(-48))]);
+const amprenta = r => JSON.stringify([r.locatie, r.etaj, r.apt, r.inc, r.obs, r.spec, r.tip, r.prioritate, r.termen, r.resp, (r.poze || []).map(p => p.length + p.slice(-48))]);
 function genId() {
   const pre = getUser() || 'teren';
   for (;;) {
@@ -866,7 +918,7 @@ function readForm() {
   if (respObs) edit.resp = respObs.get();
   edit.termen = $('oTermen').value || '';
 }
-async function saveForm() {
+async function saveForm(mesaj = 'Salvat') {
   if (!edit || saving) return;
   const ed = edit;
   saving = true; $('btnSalv').disabled = true;
@@ -897,15 +949,28 @@ async function saveForm() {
     if (edit === ed) edit = null;
     formDirty = false; uitaCadre(ed);
     inLista(usoara(doarText ? (({ poze, ...x }) => x)(ed) : ed));
+    stergeFaraPb(ed.locatie, ed.etaj, ed.apt);                // are o constatare -> nu mai e „fără probleme”
     await dropDraft();
     saving = false; $('btnSalv').disabled = false; $('vObs').classList.remove('salvez');
-    toast('Salvat');
+    toast(mesaj);
     inapoiLaApt();
   } finally { saving = false; $('btnSalv').disabled = false; $('vObs').classList.remove('salvez'); }
 }
 const vineDinLista = () => prevView() === 'apt' || prevView() === 'mele';
 function inapoiLaApt() { if (vineDinLista()) history.back(); else go('apt', true); }
-$('btnSalv').onclick = saveForm;
+$('btnSalv').onclick = () => saveForm();
+$('btnMuta').onclick = () => {
+  if (!edit || saving) return;
+  readForm();
+  const ed = edit;
+  alegeApt({ locatie: ed.locatie, etaj: ed.etaj, apt: ed.apt }, dest => {
+    if (edit !== ed) return;
+    Object.assign(ed, { locatie: dest.loc, etaj: dest.et, apt: dest.apt });
+    formDirty = true;
+    if ((ed.obs || ed.poze.length) && ed.inc) { saveForm(`Mutată în ${dest.apt}`); return; }
+    renderObs(); saveDraftSoon(); toast(`Acum în ${dest.apt}`);      // nesalvată încă (lipsește textul / încăperea): rămâi în formular
+  }, 'Mută în');
+};
 $('btnCopiaza').onclick = () => {
   if (!edit) return;
   readForm();
@@ -1157,6 +1222,7 @@ function aiAnuleaza() {
 
 /* ---------------- GATA / EXPORT ---------------- */
 function recsExport() { return $('doarNoi').checked ? all.filter(r => !r._meta?.exportat) : all.slice(); }
+const okExport = () => listaFaraPb($('doarNoi').checked);       // apartamentele „fără probleme” merg în rapoarte cu 0 (nu și în fișierul pentru aplicație)
 function grupat(recs) {
   const g = new Map();
   recs.forEach(r => { const k = `${r.locatie} · ${r.etaj} · ${r.apt}`; if (!g.has(k)) g.set(k, []); g.get(k).push(r); });
@@ -1165,13 +1231,15 @@ function grupat(recs) {
 function renderGata() {
   head('Trimite constatările', '');
   $('lblExpApp').textContent = 'Fișier pentru aplicația de verificări';
-  const recs = recsExport();
+  const recs = recsExport(), ok = okExport();
   const g = grupat(recs);
   const np = recs.reduce((x, r) => x + (r.nPoze || 0), 0);
   const pl = (n, a, b) => `${n} ${n === 1 ? a : b}`;
-  $('gxRez').textContent = recs.length ? [pl(recs.length, 'constatare', 'constatări'), pl(g.size, 'loc', 'locuri'), pl(np, 'poză / video', 'poze / video')].join(' · ') : 'Nimic de trimis';
+  $('gxRez').textContent = recs.length || ok.length ? [recs.length ? pl(recs.length, 'constatare', 'constatări') : '', recs.length ? pl(g.size, 'loc', 'locuri') : '',
+    ok.length ? `${ok.length} fără probleme` : '', recs.length ? pl(np, 'poză / video', 'poze / video') : ''].filter(Boolean).join(' · ') : 'Nimic de trimis';
   let h = '';
   g.forEach((l, k) => { const [lo, et, ap] = k.split(' · '); h += `<div class="grow-row"><span><b>${esc(ap)}</b> · ${esc(lo)} · ${esc(et)}</span><span class="pill">${l.length}</span></div>`; });
+  ok.forEach(x => { h += `<div class="grow-row okr"><span><b>${esc(x.apt)}</b> · ${esc(x.loc)} · ${esc(x.et)}</span><span class="pill ok">✓</span></div>`; });
   $('gataSum').innerHTML = h || '';
 }
 $('doarNoi').onchange = renderGata;
@@ -1206,7 +1274,7 @@ const unaCateUna = fn => async () => {               // (18) dublu-tap pe export
   try { await fn(); } finally { exportInLucru = false; ['btnExpApp', 'btnExpXlsx', 'btnExpPdf'].forEach(id => { $(id).disabled = false; }); }
 };
 $('btnExpApp').onclick = unaCateUna(async () => {
-  const recs = recsExport();
+  const recs = recsExport(), okApt = okExport();
   if (!recs.length) { toast('Nimic de trimis'); return; }
   toast('Pregătesc…', 2000);
   const parti = ['{"observatii":['];
@@ -1220,6 +1288,7 @@ $('btnExpApp').onclick = unaCateUna(async () => {
   if (!ok) return;
   const t = new Date().toISOString();
   for (const r of recs) await patchMeta(r.id, { exportat: t });
+  okApt.forEach(x => { if (faraPb[x.k]) faraPb[x.k].exportat = t; }); if (okApt.length) saveFaraPb();   // „Doar netrimise” = la fel ca la constatări
   renderGata();
   toast(`Trimise: ${recs.length}`, 2500);
 });
@@ -1299,17 +1368,18 @@ function ordineRaport(recs) {
   }
   return out;
 }
-async function construiesteXlsx(recs, prog) {
+async function construiesteXlsx(recs, prog, ok = []) {
   const ord = ordineRaport(recs);
   const PR = 3, TW = 112, TH = 84, PAD = 4;                         // 3 poze pe rând în celulă
-  const lat = [5, 12, 7, 9, 18, 44, 14.5, 19, 28, 11, 17, 17, 17];
+  const lat = [8.5, 15, 9, 9, 18, 44, 14.5, 19, 28, 11, 17, 17, 17];       // Nr. / Apartament / Corp mai late: în Excel butonul de filtru le tăia antetul (25.11)
   const cap = ['Nr.', 'Apartament', 'Corp', 'Etaj', 'Încăpere', 'Constatare', 'Tip', 'Specialitate', 'Firmă', 'Termen', 'Poze', '', ''];
   const R0 = 5, C0 = 2, CP = C0 + 10, ultCol = colL(CP + PR - 1), ultim = R0 + ord.length;
   const locuri = new Map(); ord.forEach(r => { const k = `${r.apt}|${r.locatie}|${r.etaj}`; if (!locuri.has(k)) locuri.set(k, { r, n: 0 }); locuri.get(k).n++; });
   const nPoze = ord.reduce((x, r) => x + (r.nPoze || 0), 0), azi = new Date();
   const pl = (n, a, b) => `${n} ${n === 1 ? a : b}`;
   const rows = [`<row r="2">${xS('B2', 1, 'Raport constatări')}</row>`,
-    `<row r="3">${xS('B3', 2, `${pad(azi.getDate())}.${pad(azi.getMonth() + 1)}.${azi.getFullYear()} · ${pl(ord.length, 'constatare', 'constatări')} · ${pl(locuri.size, 'loc', 'locuri')} · ${pl(nPoze, 'poză', 'poze')}`)}</row>`,
+    `<row r="3">${xS('B3', 2, [`${pad(azi.getDate())}.${pad(azi.getMonth() + 1)}.${azi.getFullYear()}`, pl(ord.length, 'constatare', 'constatări'), ord.length ? pl(locuri.size, 'loc', 'locuri') : '',
+      ok.length ? `${ok.length} fără probleme` : '', ord.length ? pl(nPoze, 'poză', 'poze') : ''].filter(Boolean).join(' · '))}</row>`,
     `<row r="${R0}" ht="20" customHeight="1">${cap.map((t, i) => xS(colL(C0 + i) + R0, 3, t)).join('')}</row>`];
   const merge = [`${colL(CP)}${R0}:${ultCol}${R0}`], media = [], anc = [];
   let apAnt = null;
@@ -1346,6 +1416,7 @@ async function construiesteXlsx(recs, prog) {
   // Sumar: ca tabelul din PDF
   const sr = [`<row r="2">${xS('B2', 1, 'Raport constatări - sumar')}</row>`, `<row r="4">${['Apartament', 'Corp', 'Etaj', 'Constatări'].map((t, i) => xS(colL(2 + i) + 4, 3, t)).join('')}</row>`];
   let n = 5; for (const { r, n: c } of locuri.values()) { sr.push(`<row r="${n}">${xS('B' + n, 5, r.apt)}${xS('C' + n, 6, r.locatie)}${xS('D' + n, 6, r.etaj)}${xN('E' + n, 6, c)}</row>`); n++; }
+  for (const x of ok) { sr.push(`<row r="${n}">${xS('B' + n, 5, x.apt)}${xS('C' + n, 6, x.loc)}${xS('D' + n, 6, x.et)}${xN('E' + n, 6, 0)}</row>`); n++; }   // verificat, fără probleme
   sr.push(`<row r="${n}">${xS('B' + n, 12, 'Total')}${xS('C' + n, 13, '')}${xS('D' + n, 13, '')}<c r="E${n}" s="13"><f>SUM(E5:E${n - 1})</f><v>${ord.length}</v></c></row>`);
   const foaie2 = XML0 + `<worksheet xmlns="${NS_X}" xmlns:r="${NS_R}"><dimension ref="B2:E${n}"/><sheetViews><sheetView showGridLines="0" workbookViewId="0"/></sheetViews><sheetFormatPr defaultRowHeight="15"/>`
     + `<cols><col min="1" max="1" width="2" customWidth="1"/><col min="2" max="2" width="13" customWidth="1"/><col min="3" max="3" width="8" customWidth="1"/><col min="4" max="4" width="10" customWidth="1"/><col min="5" max="5" width="12" customWidth="1"/></cols>`
@@ -1377,25 +1448,27 @@ async function construiesteXlsx(recs, prog) {
   return zipStocat(fis, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
 }
 $('btnExpXlsx').onclick = unaCateUna(async () => {
-  const recs = recsExport();
-  if (!recs.length) { toast('Nimic de trimis'); return; }
+  const recs = recsExport(), ok = okExport();
+  if (!recs.length && !ok.length) { toast('Nimic de trimis'); return; }
   const prog = m => toast(m, 120000);
   prog('Pregătesc Excel-ul…');
-  let blob; try { blob = await construiesteXlsx(recs, prog); } catch (e) { toast('Nu am putut face Excel-ul: ' + e.message, 4000); return; }
+  let blob; try { blob = await construiesteXlsx(recs, prog, ok); } catch (e) { toast('Nu am putut face Excel-ul: ' + e.message, 4000); return; }
   clearTimeout(toastT); $('toast').hidden = true;
   await shareOrDownload(blob, `raport_constatari_${stamp()}.xlsx`);
 });
 // raportul (utilizatorul, 24.11): textele EXACT cum au fost scrise, fără nume, fără rezumat, fără subsol; tabel doar Loc + Constatări
 $('btnExpPdf').onclick = unaCateUna(async () => {
-  const recs = recsExport();
-  if (!recs.length) { toast('Nimic de trimis'); return; }
+  const recs = recsExport(), ok = okExport();
+  if (!recs.length && !ok.length) { toast('Nimic de trimis'); return; }
   toast('Pregătesc raportul…', 120000);
   const g = grupat(recs);
   const nPoze = recs.reduce((x, r) => x + (r.nPoze || 0), 0);
   const pl = (n, a, b) => `${n} ${n === 1 ? a : b}`;
-  let h = `<div class="rh"><div class="rt">Raport constatări</div><div class="rs">${esc(roDateTime(new Date()))} · ${pl(recs.length, 'constatare', 'constatări')} · ${pl(g.size, 'loc', 'locuri')} · ${pl(nPoze, 'poză', 'poze')}</div></div>`;
+  const rs = [roDateTime(new Date()), pl(recs.length, 'constatare', 'constatări'), recs.length ? pl(g.size, 'loc', 'locuri') : '', ok.length ? `${ok.length} fără probleme` : '', recs.length ? pl(nPoze, 'poză', 'poze') : ''].filter(Boolean).join(' · ');
+  let h = `<div class="rh"><div class="rt">Raport constatări</div><div class="rs">${esc(rs)}</div></div>`;
   h += `<table class="rtab"><thead><tr><th>Loc</th><th class="n">Constatări</th></tr></thead><tbody>`;
   for (const [, l] of g) h += `<tr><td><b>${esc(l[0].apt)}</b> · ${esc(l[0].locatie)} · ${esc(l[0].etaj)}</td><td class="n">${l.length}</td></tr>`;
+  for (const x of ok) h += `<tr class="okr"><td><b>${esc(x.apt)}</b> · ${esc(x.loc)} · ${esc(x.et)}</td><td class="n">0</td></tr>`;    // verificat, fără probleme
   h += `</tbody></table>`;
   let nr = 0;
   for (const [, l] of g) {

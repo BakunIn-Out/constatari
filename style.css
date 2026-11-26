@@ -75,7 +75,13 @@ input.big { font-size: 20px; text-align: left; letter-spacing: 0; }
 .tile-b { min-height: 64px; padding: 8px 6px; border: 1.5px solid var(--line2); border-radius: 14px; background: var(--surface);
   font-size: 19px; font-weight: 700; color: var(--ink); cursor: pointer; line-height: 1.2; overflow-wrap: anywhere; }
 .tiles.small .tile-b { min-height: 56px; font-size: 18px; }
+/* verificat: verde = fără probleme (apartament) / tot etajul · portocaliu = cu constatări · alb = neverificat */
+.tile-b.ok { background: #dcfce7; border-color: #4ade80; color: var(--ok); }
+.tile-b.ok .n { opacity: 1; }
+.tile-b.pb { background: #ffedd5; border-color: #fb923c; }
+.tile-b.pb .n { color: #c2410c; opacity: 1; }
 .tile-b.on { background: var(--pri); border-color: var(--pri); color: #fff; }
+.tile-b.on .n { color: #fff; }
 .tile-b .n { display: block; font-size: 13px; font-weight: 600; opacity: .75; margin-top: 2px; }
 .btn.gata { margin-top: 28px; }
 .pill { display: inline-flex; align-items: center; padding: 2px 10px; border-radius: 999px; background: var(--pri-soft); color: var(--pri); font-size: 15px; font-weight: 700; }
@@ -100,6 +106,9 @@ input.big { font-size: 20px; text-align: left; letter-spacing: 0; }
 .empty { text-align: center; padding: 56px 20px; color: var(--muted); font-size: 18px; }
 .empty svg { width: 52px; height: 52px; stroke-width: 1.5; color: var(--faint); }
 .empty .et { margin: 12px 0 6px; font-size: 21px; font-weight: 750; color: var(--ink); }
+.empty .okb { margin-top: 26px; color: var(--ok); border-color: #86efac; }
+.empty .okb svg { width: 24px; height: 24px; stroke-width: 2.5; color: inherit; }
+.empty .okb.on { background: var(--ok); border-color: var(--ok); color: #fff; }
 
 /* constatare: poză / video / microfon */
 .media { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
