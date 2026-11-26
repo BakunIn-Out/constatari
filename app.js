@@ -6,7 +6,7 @@
    Datele stau pe telefon (IndexedDB). Spre AI (doar când completează) pleacă textul + imaginile constatării
    și câteva rânduri-exemplu din backup-ul importat (ca să scrie în același stil). */
 
-const APP_VER = '0.7.5';
+const APP_VER = '0.7.6';
 // pagină veche (din cache) + cod nou -> nu pornesc pe jumătate: șterg memoria veche și redeschid curat
 if (document.documentElement.getAttribute('data-ver') !== APP_VER) {
   (window.reparaAplicatia || function () {
@@ -1359,7 +1359,10 @@ const XL_TEMA = XML0 + '<a:theme xmlns:a="http://schemas.openxmlformats.org/draw
   + '<a:lnStyleLst>' + '<a:ln w="6350" cap="flat" cmpd="sng" algn="ctr"><a:prstDash val="solid"/><a:miter/></a:ln>'.repeat(3) + '</a:lnStyleLst>'
   + '<a:effectStyleLst>' + '<a:effectStyle><a:effectLst/></a:effectStyle>'.repeat(3) + '</a:effectStyleLst>'
   + '<a:bgFillStyleLst>' + '<a:solidFill><a:schemeClr val="phClr"></a:schemeClr></a:solidFill>'.repeat(3) + '</a:bgFillStyleLst></a:fmtScheme></a:themeElements></a:theme>';
-const XL_PX = w => Math.trunc(w * 7 + 0.5);                 // lățimea coloanei (caractere) -> pixeli, ca Excel la Calibri 11
+// (v0.7.6) Previzualizarea iPhone (Fișiere / WhatsApp) pune pozele după a:off (Excel și LibreOffice după ancoră, a:off nu le schimbă nimic),
+// dar desenează coloanele cu ~8,08 px / caracter (Excel: 7) și grila cu ~12 px (orizontal) / ~10 px (vertical) față de originea pozelor.
+// Măsurat pe o captură de pe un iPhone din echipă (26.11 17:42): TEST A, 6 borduri de coloană + 9 rânduri + 3 coloane de poze. Rândurile = exact în puncte.
+const IOS_PX = 8.08, IOS_X0 = 12, IOS_Y0 = 10;
 // stiluri (stilul echipei: Calibri 11, antet gri D9D9D9, borduri subțiri negre). Indici folosiți mai jos:
 // 1 titlu · 2 subtitlu · 3 antet · 4 text · 5 text bold · 6 centrat · 7 dată · 8-11 = 4-7 cu linie groasă sus (apartament nou) · 12 Total · 13 Total centrat
 function xlStiluri() {
@@ -1414,13 +1417,14 @@ async function construiesteXlsx(recs, prog) {
   const locuri = new Map(); ord.forEach(r => { const k = `${r.apt}|${r.locatie}|${r.etaj}`; if (!locuri.has(k)) locuri.set(k, { r, n: 0 }); locuri.get(k).n++; });
   const nPoze = ord.reduce((x, r) => x + (r.nPoze || 0), 0), azi = new Date();
   const pl = (n, a, b) => `${n} ${n === 1 ? a : b}`;
-  const rows = [`<row r="2">${xS('B2', 1, 'Raport constatări')}</row>`,
-    `<row r="3">${xS('B3', 2, [`${pad(azi.getDate())}.${pad(azi.getMonth() + 1)}.${azi.getFullYear()}`, pl(ord.length, 'constatare', 'constatări'), ord.length ? pl(locuri.size, 'loc', 'locuri') : '',
-      ord.length ? pl(nPoze, 'poză', 'poze') : ''].filter(Boolean).join(' · '))}</row>`,
+  // rândurile de sus cu înălțime FIXĂ (v0.7.6): previzualizarea iPhone așază pozele după a:off, deci trebuie să știm exact unde începe fiecare rând
+  const rows = [`<row r="1" ht="15" customHeight="1"/>`, `<row r="2" ht="20" customHeight="1">${xS('B2', 1, 'Raport constatări')}</row>`,
+    `<row r="3" ht="15" customHeight="1">${xS('B3', 2, [`${pad(azi.getDate())}.${pad(azi.getMonth() + 1)}.${azi.getFullYear()}`, pl(ord.length, 'constatare', 'constatări'), ord.length ? pl(locuri.size, 'loc', 'locuri') : '',
+      ord.length ? pl(nPoze, 'poză', 'poze') : ''].filter(Boolean).join(' · '))}</row>`, `<row r="4" ht="15" customHeight="1"/>`,
     `<row r="${R0}" ht="20" customHeight="1">${cap.map((t, i) => xS(colL(C0 + i) + R0, 3, t)).join('')}</row>`];
   const merge = [`${colL(CP)}${R0}:${ultCol}${R0}`], media = [], anc = [];
-  const latTot = [2, ...lat], xCol = c => latTot.slice(0, c).reduce((s, w) => s + XL_PX(w), 0);   // pixeli de la marginea foii la coloana c (0 = A)
-  let yPt = (R0 - 1) * 15 + 20;                                     // puncte de la marginea foii la primul rând de date (rândurile 1..R0-1 = 15, antetul = 20)
+  const latTot = [2, ...lat], sumW = c => latTot.slice(0, c).reduce((s, w) => s + w, 0);   // lățimea coloanelor A..(c-1), în caractere
+  let yPt = 15 + 20 + 15 + 15 + 20;                                  // puncte de la marginea foii la primul rând de date (rândurile 1-4 + antetul)
   let apAnt = null;
   for (let k = 0; k < ord.length; k++) {
     const r = ord[k], row = R0 + 1 + k, key = `${r.apt}|${r.locatie}|${r.etaj}`, o = key !== apAnt ? 4 : 0; apAnt = key;
@@ -1445,7 +1449,7 @@ async function construiesteXlsx(recs, prog) {
         + `<xdr:to><xdr:col>${col}</xdr:col><xdr:colOff>${EMU(offX + m.w)}</xdr:colOff><xdr:row>${r0}</xdr:row><xdr:rowOff>${EMU(offY + m.h)}</xdr:rowOff></xdr:to>`
         + `<xdr:pic><xdr:nvPicPr><xdr:cNvPr id="${id + 1}" name="Poza ${id}"/><xdr:cNvPicPr><a:picLocks noChangeAspect="1"/></xdr:cNvPicPr></xdr:nvPicPr>`
         + `<xdr:blipFill><a:blip r:embed="rId${id}"/><a:stretch><a:fillRect/></a:stretch></xdr:blipFill>`
-        + `<xdr:spPr><a:xfrm><a:off x="${EMU(xCol(col) + offX)}" y="${Math.round(yPt * 12700) + EMU(offY)}"/><a:ext cx="${EMU(m.w)}" cy="${EMU(m.h)}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></xdr:spPr></xdr:pic><xdr:clientData/></xdr:twoCellAnchor>`);
+        + `<xdr:spPr><a:xfrm><a:off x="${EMU(IOS_X0 + IOS_PX * sumW(col) + (IOS_PX * latTot[col] - m.w) / 2)}" y="${EMU(IOS_Y0 + offY) + Math.round(yPt * 12700)}"/><a:ext cx="${EMU(m.w)}" cy="${EMU(m.h)}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></xdr:spPr></xdr:pic><xdr:clientData/></xdr:twoCellAnchor>`);
     }
     yPt += +ht.toFixed(2);
     if (k % 5 === 4) { prog(`Pregătesc Excel-ul… ${k + 1}/${ord.length}`); await pauza(0); }
