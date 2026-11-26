@@ -6,7 +6,7 @@
    Datele stau pe telefon (IndexedDB). Spre AI (doar când completează) pleacă textul + imaginile constatării
    și câteva rânduri-exemplu din backup-ul importat (ca să scrie în același stil). */
 
-const APP_VER = '0.7.2';
+const APP_VER = '0.7.3';
 // pagină veche (din cache) + cod nou -> nu pornesc pe jumătate: șterg memoria veche și redeschid curat
 if (document.documentElement.getAttribute('data-ver') !== APP_VER) {
   (window.reparaAplicatia || function () {
@@ -1384,7 +1384,9 @@ function ordineRaport(recs) {
   }
   return out;
 }
+let xlsxLipsa = 0;                                           // poze care n-au putut intra în Excel (le spun, nu tac)
 async function construiesteXlsx(recs, prog) {
+  xlsxLipsa = 0;
   const ord = ordineRaport(recs);
   const PR = 3, TW = 112, TH = 84, PAD = 4;                         // 3 poze pe rând în celulă
   const lat = [8.5, 15, 9, 9, 18, 44, 14.5, 19, 28, 11, 17, 17, 17];       // Nr. / Apartament / Corp mai late: în Excel butonul de filtru le tăia antetul (25.11)
@@ -1413,12 +1415,16 @@ async function construiesteXlsx(recs, prog) {
     rows.push(`<row r="${row}" ht="${ht.toFixed(2)}" customHeight="1">${c}</row>`);
     merge.push(`${colL(CP)}${row}:${ultCol}${row}`);
     for (let j = 0; j < pz.length; j++) {
-      let m; try { m = await miniXlsx(pz[j], !isGif(pz[j])); } catch (e) { continue; }
+      let m; try { m = await miniXlsx(pz[j], !isGif(pz[j])); } catch (e) { xlsxLipsa++; continue; }
       media.push(m.date); const id = media.length;
       const offX = PAD + Math.floor((TW - m.w) / 2), offY = PAD / 2 + Math.floor(j / PR) * (TH + PAD);
-      anc.push(`<xdr:oneCellAnchor><xdr:from><xdr:col>${CP - 1 + (j % PR)}</xdr:col><xdr:colOff>${EMU(offX)}</xdr:colOff><xdr:row>${row - 1}</xdr:row><xdr:rowOff>${EMU(offY)}</xdr:rowOff></xdr:from>`
-        + `<xdr:ext cx="${EMU(m.w)}" cy="${EMU(m.h)}"/><xdr:pic><xdr:nvPicPr><xdr:cNvPr id="${id + 1}" name="Poza ${id}"/><xdr:cNvPicPr><a:picLocks noChangeAspect="1"/></xdr:cNvPicPr></xdr:nvPicPr>`
-        + `<xdr:blipFill><a:blip r:embed="rId${id}"/><a:stretch><a:fillRect/></a:stretch></xdr:blipFill><xdr:spPr><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></xdr:spPr></xdr:pic><xdr:clientData/></xdr:oneCellAnchor>`);
+      // (26.11, iPhone-ul lui Denis nu arăta pozele) = forma pe care o scrie Excel când inserezi o poză: ancoră pe două colțuri (în aceeași celulă) + mărimea în spPr
+      const col = CP - 1 + (j % PR), r0 = row - 1;
+      anc.push(`<xdr:twoCellAnchor editAs="oneCell"><xdr:from><xdr:col>${col}</xdr:col><xdr:colOff>${EMU(offX)}</xdr:colOff><xdr:row>${r0}</xdr:row><xdr:rowOff>${EMU(offY)}</xdr:rowOff></xdr:from>`
+        + `<xdr:to><xdr:col>${col}</xdr:col><xdr:colOff>${EMU(offX + m.w)}</xdr:colOff><xdr:row>${r0}</xdr:row><xdr:rowOff>${EMU(offY + m.h)}</xdr:rowOff></xdr:to>`
+        + `<xdr:pic><xdr:nvPicPr><xdr:cNvPr id="${id + 1}" name="Poza ${id}"/><xdr:cNvPicPr><a:picLocks noChangeAspect="1"/></xdr:cNvPicPr></xdr:nvPicPr>`
+        + `<xdr:blipFill><a:blip r:embed="rId${id}"/><a:stretch><a:fillRect/></a:stretch></xdr:blipFill>`
+        + `<xdr:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${EMU(m.w)}" cy="${EMU(m.h)}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></xdr:spPr></xdr:pic><xdr:clientData/></xdr:twoCellAnchor>`);
     }
     if (k % 5 === 4) { prog(`Pregătesc Excel-ul… ${k + 1}/${ord.length}`); await pauza(0); }
   }
@@ -1470,6 +1476,7 @@ $('btnExpXlsx').onclick = unaCateUna(async () => {
   let blob; try { blob = await construiesteXlsx(recs, prog); } catch (e) { toast('Nu am putut face Excel-ul: ' + e.message, 4000); return; }
   clearTimeout(toastT); $('toast').hidden = true;
   await shareOrDownload(blob, `raport_constatari_${stamp()}.xlsx`);
+  if (xlsxLipsa) toast(`${xlsxLipsa} ${xlsxLipsa === 1 ? 'poză n-a intrat' : 'poze n-au intrat'} în Excel`, 6000);
 });
 // raportul (utilizatorul, 24.11): textele EXACT cum au fost scrise, fără nume, fără rezumat, fără subsol; tabel doar Loc + Constatări
 $('btnExpPdf').onclick = unaCateUna(async () => {
