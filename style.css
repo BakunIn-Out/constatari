@@ -75,9 +75,7 @@ input.big { font-size: 20px; text-align: left; letter-spacing: 0; }
 .tile-b { min-height: 64px; padding: 8px 6px; border: 1.5px solid var(--line2); border-radius: 14px; background: var(--surface);
   font-size: 19px; font-weight: 700; color: var(--ink); cursor: pointer; line-height: 1.2; overflow-wrap: anywhere; }
 .tiles.small .tile-b { min-height: 56px; font-size: 18px; }
-/* verificat: verde = fără probleme (apartament) / tot etajul · portocaliu = cu constatări · alb = neverificat */
-.tile-b.ok { background: #dcfce7; border-color: #4ade80; color: var(--ok); }
-.tile-b.ok .n { opacity: 1; }
+/* portocaliu = cu constatări */
 .tile-b.pb { background: #ffedd5; border-color: #fb923c; }
 .tile-b.pb .n { color: #c2410c; opacity: 1; }
 .tile-b.on { background: var(--pri); border-color: var(--pri); color: #fff; }
@@ -106,9 +104,6 @@ input.big { font-size: 20px; text-align: left; letter-spacing: 0; }
 .empty { text-align: center; padding: 56px 20px; color: var(--muted); font-size: 18px; }
 .empty svg { width: 52px; height: 52px; stroke-width: 1.5; color: var(--faint); }
 .empty .et { margin: 12px 0 6px; font-size: 21px; font-weight: 750; color: var(--ink); }
-.empty .okb { margin-top: 26px; color: var(--ok); border-color: #86efac; }
-.empty .okb svg { width: 24px; height: 24px; stroke-width: 2.5; color: inherit; }
-.empty .okb.on { background: var(--ok); border-color: var(--ok); color: #fff; }
 
 /* constatare: poză / video / microfon */
 .media { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
@@ -272,6 +267,13 @@ input.data { width: 100%; min-height: 52px; margin-top: 10px; padding: 0 14px; f
 .item.mi .room { font-size: 14px; font-weight: 600; color: var(--muted); }
 .item.mi svg { width: 20px; height: 20px; color: var(--faint); }
 .mapt { align-self: flex-start; margin: 2px 0 4px; }
+.mrow { display: flex; gap: 8px; align-items: stretch; }
+.mrow .item.mi { flex: 1; min-width: 0; }
+.medit { flex: 0 0 58px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); color: var(--pri); cursor: pointer; }
+.medit svg { width: 26px; height: 26px; }
+.item.mcard { cursor: default; margin-top: 4px; }
+.item.mcard.fara { grid-template-columns: 1fr; }
+.item.mcard.fara > .ph { display: none; }
 /* constatările mele */
 .filtre { margin-top: 14px; }
 .grup { width: 100%; display: flex; align-items: center; gap: 10px; margin: 22px 0 0; padding: 12px 14px; border: 0; border-radius: 14px;
