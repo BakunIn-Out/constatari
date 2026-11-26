@@ -1,6 +1,6 @@
 // Online-first: ia mereu versiunea nouă de pe net (verificată de fiecare dată, fără cache-ul vechi al browserului);
 // din cache doar dacă netul pică sau e foarte lent. Fișierele au versiunea în adresă (?v=), deci nu se amestecă versiuni.
-const V = '0.7.4';
+const V = '0.7.5';
 const CACHE = 'constatari-v' + V;
 const FILES = ['./', './index.html', `./style.css?v=${V}`, `./app.js?v=${V}`, `./lib/gifenc.js?v=${V}`, './date.bin.json', './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png'];
 self.addEventListener('install', e => {
